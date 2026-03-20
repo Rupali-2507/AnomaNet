@@ -1,0 +1,44 @@
+# ── AnomaNet ML Service — pinned dependencies ──────────────────────────────
+# Python 3.11 required
+
+# Web framework
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+pydantic==2.7.1
+
+# Graph & ML core
+networkx==3.3
+numpy==1.26.4
+pandas==2.2.2
+scikit-learn==1.4.2
+xgboost==2.0.3
+joblib==1.4.2
+
+# Deep learning (GNN)
+torch==2.3.0
+torch-geometric==2.5.3
+# torch-scatter and torch-sparse are installed separately — see Dockerfile
+
+# MLflow experiment tracking
+mlflow==2.13.0
+
+# Database clients
+neo4j==5.20.0
+psycopg2-binary==2.9.9
+redis==5.0.4
+
+# Kafka
+kafka-python==2.0.2
+
+# Async HTTP (for explainability engine calling graph-service)
+httpx==0.27.0
+
+# Data validation / serialisation
+python-dateutil==2.9.0
+
+# Faker for realistic synthetic data generation
+Faker==25.2.0
+
+# Testing
+pytest==8.2.0
+pytest-asyncio==0.23.7
