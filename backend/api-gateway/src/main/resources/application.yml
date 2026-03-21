@@ -1,0 +1,76 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:3000"
+              - "http://localhost:3001"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+            allowCredentials: true
+      routes:
+        - id: auth-service
+          uri: http://localhost:8086
+          predicates:
+            - Path=/api/auth/**
+          filters:
+            - StripPrefix=1
+
+        - id: transaction-service
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/transactions/**, /api/accounts/**
+          filters:
+            - StripPrefix=1
+
+        - id: alert-service
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/alerts/**, /ws/alerts/**
+          filters:
+            - StripPrefix=1
+
+        - id: case-service
+          uri: http://localhost:8083
+          predicates:
+            - Path=/api/cases/**
+          filters:
+            - StripPrefix=1
+
+        - id: graph-service
+          uri: http://localhost:8084
+          predicates:
+            - Path=/api/graph/**
+          filters:
+            - StripPrefix=1
+
+        - id: report-service
+          uri: http://localhost:8085
+          predicates:
+            - Path=/api/reports/**
+          filters:
+            - StripPrefix=1
+
+        - id: simulator-bridge
+          uri: http://localhost:8087
+          predicates:
+            - Path=/api/simulate/**
+          filters:
+            - StripPrefix=1
+
+        - id: admin-config
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/admin/**
+          filters:
+            - StripPrefix=1
+
+jwt:
+  secret: ${JWT_SECRET:3f4a8b2c1d9e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a}
