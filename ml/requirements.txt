@@ -41,3 +41,7 @@ Faker==25.2.0
 # Testing
 pytest==8.2.0
 pytest-asyncio==0.23.7
+
+# Redis (feature store)
+redis==5.0.1
+numpy==1.26.4
