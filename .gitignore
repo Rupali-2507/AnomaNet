@@ -26,6 +26,7 @@ data/
 
 # Trained model artifacts (tracked by MLflow, not git)
 ml/core/models/
+ml/models
 ml/**/*.pt
 ml/**/*.pkl
 ml/**/*.joblib

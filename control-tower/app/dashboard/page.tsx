@@ -18,6 +18,8 @@ import Footer from "../components/Footer";
 
 import dynamic from "next/dynamic";
 import NodeInspector from "../components/graph/NodeInspector";
+import AccountLookupSection from "../components/AccountLookupSection";
+import CasesPage from "../components/CaseSection";
 import type { GraphNode } from "../components/graph/FraudGraph3D";
 
 const FraudGraph3D = dynamic(
@@ -28,18 +30,41 @@ const FraudGraph3D = dynamic(
 // --- Constants & Types ---
 const ML_URL  = "http://56.228.10.113:8001";
 
+interface KafkaLog {
+  time: string;
+  level: "ALERT" | "ML" | "TX";
+  msg: string;
+}
+
+
+const MOCK_KAFKA: KafkaLog[] = [
+  { time: "14:31:58", level: "ALERT", msg: "CIRCULAR detected · score=0.91 · ACC-B872" },
+  { time: "14:31:57", level: "ML",    msg: "GraphSAGE encoded 3 accounts · 128-dim" },
+  { time: "14:31:56", level: "TX",    msg: "NEFT ₹47.6L · ACC-3341→ACC-B872 settled" },
+  { time: "14:31:52", level: "TX",    msg: "NEFT ₹47.9L · ACC-9912→ACC-3341 settled" },
+  { time: "14:31:49", level: "TX",    msg: "NEFT ₹48.2L · ACC-B872→ACC-9912 initiated" },
+  { time: "14:28:00", level: "ALERT", msg: "STRUCTURING detected · score=0.83 · ACC-2219" },
+  { time: "14:28:00", level: "ML",    msg: "XGBoost structuring classifier · 3 tx clustered below ₹10L" },
+  { time: "14:22:44", level: "ALERT", msg: "DORMANT activation · ACC-5504 · ₹1.8Cr · dormant 14mo" },
+];
+
 
 const NAV = [
-  { group: "CORE", items: [
+  { group: "Monitoring", items: [
     { id: "dashboard",  label: "Dashboard",  icon: LayoutDashboard, notifications: null },
     { id: "alerts",     label: "Alerts",     icon: Bell, notifications: 12 },
     { id: "graph",      label: "Graph Explorer", icon: FileSearch, notifications: null },
   ]},
-  { group: "INVESTIGATION", items: [
+   { group: "INVESTIGATION", items: [
+  
+    { id: "account-lookup",  label: "Account Lookup",  icon: Zap, notifications: null },
     { id: "cases",      label: "Cases",      icon: Briefcase, notifications: 3 },
-    { id: "reports",    label: "Reports",    icon: FileText, notifications: null },
-    { id: "simulator",  label: "Simulator",  icon: Zap, notifications: null },
-  ]}
+  ]},
+  
+   {group : "REPORTING",items:[
+    { id: "reports",    label: "FIU Reports",    icon: FileText, notifications: null },
+
+   ]}
 ] as const;
 
 type View = typeof NAV[number]["items"][number]["id"];
@@ -182,6 +207,8 @@ function StatCard({ label, value, sub, color = "text-[#CAFF33]", accent, trend }
     </Card>
   );
 }
+
+
 // --- Section 1: DASHBOARD (Command Center) ---
 const DashboardSection = () => (
     <div className="flex flex-col gap-8 h-full">
@@ -254,6 +281,48 @@ const DashboardSection = () => (
                     ))}
                 </div>
             </Card>
+                  <Card className="p-8 flex flex-col">
+        <div className="flex justify-between items-center mb-6">
+          <p className="text-lg font-black text-white uppercase tracking-tighter italic">Kafka Event Log</p>
+          <div className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#CAFF33] animate-pulse" style={{ boxShadow: "0 0 6px #CAFF33" }} />
+            <span className="text-[9px] font-mono text-white/40 tracking-wider">
+              topic: alerts.generated · raw.transactions
+            </span>
+          </div>
+        </div>
+ 
+        {/* Terminal */}
+        <div className="flex-1 bg-black/60 rounded-xl border border-white/[0.06] p-4 font-mono text-[11px] overflow-hidden flex flex-col">
+          <div className="flex items-center gap-2 mb-3 pb-2 border-b border-white/[0.06] text-white/25">
+            <span className="text-[9px] font-bold uppercase tracking-widest">Pipeline Telemetry</span>
+          </div>
+          <div className="space-y-1 flex-1 overflow-y-auto custom-scrollbar">
+            {MOCK_KAFKA.map((log, i) => (
+              <div key={i} className="flex gap-3 leading-[1.9]">
+                <span className="text-white/20 shrink-0">{log.time}</span>
+                <span
+                  className="shrink-0 font-bold w-10"
+                  style={{
+                    color:
+                      log.level === "ALERT" ? "#ef4444"
+                      : log.level === "ML"   ? "#3b82f6"
+                      :                        "rgba(255,255,255,0.45)",
+                  }}
+                >
+                  {log.level}
+                </span>
+                <span className="text-white/60">{log.msg}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+ 
+        <p className="text-[9px] text-white/20 font-mono mt-3">
+          ▸ Aggregated from Kafka consumers in transaction-svc and alert-svc
+        </p>
+      </Card>
+
         </div>
     </div>
 );
@@ -305,35 +374,7 @@ function GraphExplorerSection() {
   );
 }
 
-// --- Section 3: CASES VIEW ---
-const CasesSection = () => (
-  <div className="space-y-6">
-    <div className="flex justify-between items-center">
-      <h2 className="text-3xl font-black text-white">Case Management</h2>
-      <button className="px-6 py-2.5 bg-[#CAFF33] text-black font-black text-[10px] uppercase rounded-xl">+ New Case</button>
-    </div>
-    <div className="grid grid-cols-3 gap-6">
-      {[1, 2, 3].map(i => (
-        <Card key={i} className="p-6 hover:border-[#CAFF33]/30 transition-all cursor-pointer">
-          <div className="flex justify-between items-start mb-6">
-             <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center"><Briefcase size={20} className="text-white/60" /></div>
-             <span className="text-[10px] font-bold px-2 py-1 bg-white/5 border border-white/10 rounded text-white/40 uppercase">In Progress</span>
-          </div>
-          <p className="text-[10px] text-[#CAFF33] font-black uppercase mb-1">CASE #102{i}</p>
-          <h3 className="text-lg font-bold text-white mb-2 underline decoration-white/10">Suspected Ring: Sector 09</h3>
-          <p className="text-xs text-white/50 leading-relaxed mb-4">Investigation into a cluster of 12 accounts with high-frequency circular transfers originating from Kolkata node.</p>
-          <div className="flex items-center gap-4 border-t border-white/5 pt-4">
-             <div className="flex -space-x-2">
-                <div className="w-6 h-6 rounded-full bg-blue-500 border border-black" />
-                <div className="w-6 h-6 rounded-full bg-purple-500 border border-black" />
-             </div>
-             <span className="text-[10px] text-white/40 font-bold uppercase tracking-widest">2 Investigators</span>
-          </div>
-        </Card>
-      ))}
-    </div>
-  </div>
-);
+
 
 // --- Section 4: REPORTS VIEW ---
 const ReportsSection = () => (
@@ -366,187 +407,11 @@ const ReportsSection = () => (
   </div>
 );
 
-// --- Section 5: SIMULATOR VIEW ---
-export const SimulatorSection = () => {
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [activeVectors, setActiveVectors] = useState<string[]>(["Circular"]);
-  const [logs, setLogs] = useState<{msg: string, type: 'info' | 'warn' | 'err'}[]>([]);
-
-  // Simple Log Simulator
-  useEffect(() => {
-    if (!isSimulating) return;
-    const interval = setInterval(() => {
-      const msgs = [
-        { msg: "Injecting synthetic batch: 500 tx/s", type: 'info' },
-        { msg: "GNN Inference: High clustering detected in subgraph 0x44", type: 'warn' },
-        { msg: "EIF score spike: 0.89 on Node_9921", type: 'err' },
-        { msg: "Blockchain sync latency: 12ms", type: 'info' }
-      ] as const;
-      const randomMsg = msgs[Math.floor(Math.random() * msgs.length)];
-      setLogs(prev => [randomMsg, ...prev].slice(0, 8));
-      setProgress(p => (p + 1) % 100);
-    }, 1500);
-    return () => clearInterval(interval);
-  }, [isSimulating]);
-
-  const toggleVector = (v: string) => {
-    setActiveVectors(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
-  };
-
-  return (
-    <div className="grid grid-cols-[380px_1fr] gap-8 h-full">
-      {/* Sidebar Controls */}
-      <div className="space-y-6 flex flex-col h-full">
-        <div>
-          <Eyebrow>Simulation Engine</Eyebrow>
-          <h2 className="text-2xl font-black text-white italic">Scenario Lab</h2>
-        </div>
-
-        <Card className="p-6 space-y-6">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black text-white/60 uppercase tracking-widest">Target Environment</span>
-              <span className="text-[9px] text-[#CAFF33] font-mono bg-[#CAFF33]/10 px-2 py-0.5 rounded">STAGING_V2</span>
-            </div>
-            
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-white/40 uppercase">Synthetic Volume (TPS)</label>
-              <div className="flex items-center gap-4">
-                <input type="range" className="flex-1 accent-[#CAFF33]" defaultValue={45} />
-                <span className="text-xs font-mono font-bold text-white w-8">450</span>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <label className="text-[10px] font-bold text-white/40 uppercase">Attack Vectors</label>
-              <div className="grid grid-cols-2 gap-2">
-                {["Circular", "Structuring", "Layering", "Dormant"].map(v => (
-                  <AttackVector 
-                    key={v} 
-                    label={v} 
-                    active={activeVectors.includes(v)} 
-                    onClick={() => toggleVector(v)} 
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-4 border-t border-white/10 space-y-3">
-            {!isSimulating ? (
-              <button 
-                onClick={() => setIsSimulating(true)}
-                className="w-full py-4 bg-[#CAFF33] text-black font-black rounded-xl text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-[#b8e62e] transition-colors"
-              >
-                <Play size={14} fill="currentColor" /> Initialize Simulation
-              </button>
-            ) : (
-              <button 
-                onClick={() => setIsSimulating(false)}
-                className="w-full py-4 bg-white/5 text-white/60 font-black rounded-xl border border-white/10 text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-white/10"
-              >
-                <Square size={14} fill="currentColor" /> Terminate Scenario
-              </button>
-            )}
-          </div>
-        </Card>
-
-        {/* Mock System Health */}
-        <Card className="p-5 flex-1 bg-gradient-to-b from-[#0a0a0a] to-[#050505]">
-          <p className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-6">Node Status</p>
-          <div className="grid grid-cols-2 gap-y-6">
-            <MetricSmall icon={Cpu} label="CPU Load" value={isSimulating ? 68 + Math.floor(Math.random()*10) : 12} unit="%" />
-            <MetricSmall icon={HardDrive} label="Memory" value="4.2" unit="GB" />
-            <MetricSmall icon={Database} label="DB IOPS" value={isSimulating ? "1.2k" : "0.1k"} unit="" />
-            <MetricSmall icon={Activity} label="Latency" value={isSimulating ? "42" : "8"} unit="ms" />
-          </div>
-        </Card>
-      </div>
-
-      {/* Main Simulation View */}
-      <div className="flex flex-col gap-6">
-        <Card className="flex-1 flex flex-col relative overflow-hidden bg-black/40 border-dashed border-white/10">
-          {!isSimulating ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-              <div className="w-24 h-24 rounded-full border border-dashed border-white/10 flex items-center justify-center mb-8 relative">
-                <div className="absolute inset-0 rounded-full bg-[#CAFF33]/5 animate-ping" />
-                <Zap size={40} className="text-white/10" />
-              </div>
-              <h3 className="text-2xl font-black text-white mb-3 italic">Awaiting Parameters</h3>
-              <p className="text-white/40 text-sm max-w-sm mx-auto font-medium">
-                Configure synthetic fraud weights and transaction volume to begin the stress test.
-              </p>
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col p-8">
-               <div className="flex items-center justify-between mb-8">
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 text-[#CAFF33] bg-[#CAFF33]/10 px-3 py-1.5 rounded-full border border-[#CAFF33]/20">
-                      <Loader2 className="animate-spin" size={14} />
-                      <span className="text-[10px] font-black uppercase tracking-widest">Active Simulation</span>
-                    </div>
-                    <span className="text-[10px] font-mono text-white/40">ID: SIM-293-AX</span>
-                  </div>
-                  <div className="flex gap-1">
-                    {[...Array(20)].map((_, i) => (
-                      <div key={i} className={`h-1 w-2 rounded-full ${i/20 < progress/100 ? 'bg-[#CAFF33]' : 'bg-white/5'}`} />
-                    ))}
-                  </div>
-               </div>
-
-               {/* Mock Data Visualization Area */}
-               <div className="flex-1 rounded-2xl bg-white/[0.02] border border-white/[0.05] p-6 mb-6 flex flex-col justify-center items-center">
-                  <div className="text-center space-y-4">
-                    <ShieldAlert size={48} className="text-red-500 mx-auto animate-pulse" />
-                    <p className="text-3xl font-black text-white font-mono tracking-tighter">
-                      {Math.floor(progress * 4.2)} <span className="text-white/20 text-lg">Alerts Triggered</span>
-                    </p>
-                    <p className="text-xs text-white/40 uppercase tracking-[0.2em] font-bold">Detection Precision: 98.2%</p>
-                  </div>
-               </div>
-
-               {/* Terminal Style Logs */}
-               <div className="h-48 bg-black/60 rounded-xl border border-white/5 p-4 font-mono text-[11px] overflow-hidden flex flex-col shadow-inner">
-                  <div className="flex items-center gap-2 mb-3 text-white/30 border-b border-white/5 pb-2">
-                    <Terminal size={12} />
-                    <span className="uppercase tracking-widest text-[9px] font-bold">Pipeline Telemetry</span>
-                  </div>
-                  <div className="space-y-1.5 overflow-y-auto custom-scrollbar flex-1">
-                    {logs.map((log, i) => (
-                      <div key={i} className="flex gap-3">
-                        <span className="text-white/20">[{new Date().toLocaleTimeString()}]</span>
-                        <span className={log.type === 'err' ? 'text-red-400' : log.type === 'warn' ? 'text-yellow-400' : 'text-blue-400'}>
-                          {log.type.toUpperCase()}
-                        </span>
-                        <span className="text-white/60">{log.msg}</span>
-                      </div>
-                    ))}
-                  </div>
-               </div>
-            </div>
-          )}
-        </Card>
-      </div>
-    </div>
-  );
-};
-
 // --- Sidebar Component ---
 const Sidebar = ({ active, setActive }: { active: View, setActive: (v: View) => void }) => {
   return (
     <aside className="w-64 shrink-0 border-r border-white/[0.07] flex flex-col py-8 px-4 h-screen sticky top-0 bg-[#070707] z-20">
-      <div className="mb-12 px-2 flex items-center gap-3">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#CAFF33] to-[#7fff00] p-[1px]">
-          <div className="w-full h-full rounded-xl bg-black flex items-center justify-center">
-            <ShieldAlert className="text-[#CAFF33]" size={18} />
-          </div>
-        </div>
-        <div>
-          <h1 className="text-xl font-black text-white leading-none tracking-tight">AnomaNet</h1>
-          <p className="text-[9px] text-white/40 font-bold uppercase tracking-[0.2em] mt-1">Intell. Platform</p>
-        </div>
-      </div>
+      
 
       <nav className="flex-1 space-y-10">
         {NAV.map(group => (
@@ -597,9 +462,9 @@ export default function FraudDashboard() {
       case "dashboard": return <DashboardSection />;
       case "alerts":    return <AlertsSection />;
       case "graph":     return <GraphExplorerSection />;
-      case "cases":     return <CasesSection />;
+      case "cases":     return <CasesPage />;
       case "reports":   return <ReportsSection />;
-      case "simulator": return <SimulatorSection />;
+      case "account-lookup": return <AccountLookupSection />;
       default:          return <DashboardSection />;
     }
   };
