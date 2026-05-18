@@ -86,11 +86,13 @@ const Navbar = () => {
 const NavContent = ({ session, onLinkClick }: { session: any, onLinkClick?: () => void }) => (
   <>
     <Link href="/" onClick={onLinkClick} className="hover:text-[#CAFF33] transition-colors">Home</Link>
-    <Link href="/dashboard" onClick={onLinkClick} className="hover:text-[#CAFF33] transition-colors">
-  Dashboard
-</Link>
-    <Link href="/network" onClick={onLinkClick} className="hover:text-[#CAFF33] transition-colors">Network</Link>
-    <Link href="/stats" onClick={onLinkClick} className="hover:text-[#CAFF33] transition-colors">Stats</Link>
+    
+ <Link href="/monitoring" onClick={onLinkClick} className="hover:text-[#CAFF33] transition-colors">Mointoring</Link>
+
+ <Link href="/investigation" onClick={onLinkClick} className="hover:text-[#CAFF33] transition-colors">Investigation</Link>
+  <Link href="/reporting" onClick={onLinkClick} className="hover:text-[#CAFF33] transition-colors">Reporting</Link>
+
+    {/* <Link href="/stats" onClick={onLinkClick} className="hover:text-[#CAFF33] transition-colors">Stats</Link> */}
     <Link href="/service" onClick={onLinkClick} className="hover:text-[#CAFF33] transition-colors">Request Service</Link>
     
     {session?.user?.role === "admin" && (

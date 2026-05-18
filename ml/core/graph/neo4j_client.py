@@ -209,7 +209,16 @@ def get_account_features(account_id: str) -> dict:
     except Exception as e:
         log.error("get_account_features failed for %s: %s", account_id, e)
         return {}
-
+def get_high_risk_accounts(limit: int = 20) -> list:
+    with get_driver().session() as s:
+        result = s.run("""
+            MATCH (a:Account)
+            WHERE a.anoma_score > 0.5
+            RETURN a.id AS id, a.anoma_score AS score,
+                   a.kyc_risk_tier AS kyc_tier
+            ORDER BY a.anoma_score DESC LIMIT $limit
+        """, limit=limit)
+        return [dict(r) for r in result]
 
 # ── Counterparty history ──────────────────────────────────────────────────────
 
