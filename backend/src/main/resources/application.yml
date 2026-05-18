@@ -1,0 +1,98 @@
+server:
+  port: ${PORT:8080}
+
+spring:
+  application:
+    name: anomanet
+
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────
+  datasource:
+    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/anomanet}
+    username: ${POSTGRES_USER:anomanet}
+    password: ${POSTGRES_PASSWORD:anomanet2024}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  # ── Flyway ─────────────────────────────────────────────────────────────
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  # ── Neo4j ──────────────────────────────────────────────────────────────
+  neo4j:
+    uri: ${NEO4J_URI:bolt://localhost:7687}
+    authentication:
+      username: ${NEO4J_USER:neo4j}
+      password: ${NEO4J_PASSWORD:anomanet2024}
+
+  # ── Kafka ──────────────────────────────────────────────────────────────
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+
+  # ── WebSocket ──────────────────────────────────────────────────────────
+  websocket:
+    message-size-limit: 131072
+
+# ── JWT ──────────────────────────────────────────────────────────────────
+jwt:
+  secret: ${JWT_SECRET:3f4a8b2c1d9e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a}
+  expiration-ms: 86400000          # 24h
+  refresh-expiration-ms: 604800000 # 7d
+
+# ── Kafka topic names ─────────────────────────────────────────────────────
+kafka:
+  topics:
+    raw-transactions: raw.transactions
+    ml-scoring-queue: ml.scoring.queue
+    alerts-generated: alerts.generated
+
+# ── ML service ───────────────────────────────────────────────────────────
+ml:
+  service:
+    url: ${ML_SERVICE_URL:http://localhost:8000}
+
+# ── Thresholds ───────────────────────────────────────────────────────────
+anomanet:
+  threshold:
+    anoma-score: ${ANOMASCORE_THRESHOLD:0.65}
+    pep: ${PEP_THRESHOLD:0.45}
+
+# ── Actuator ─────────────────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+# ── OpenAPI ──────────────────────────────────────────────────────────────
+springdoc:
+  swagger-ui:
+    path: /swagger-ui
+  api-docs:
+    path: /v3/api-docs
