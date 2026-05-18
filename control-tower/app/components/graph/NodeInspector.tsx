@@ -1,329 +1,396 @@
 "use client";
 
-import { useState } from "react";
-import useExplanations from "@/app/hooks/useExplanation";
+import React, { useCallback, useEffect, useState } from "react";
+import { GraphNode } from "./FraudGraph3D";
 
-/* ================= TYPES ================= */
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-interface GraphNode {
-  id: string | number;
-  is_anomalous?: boolean | number;
-  anomalyScore?: number;   
-  volume?: number;
-  size?: number;
-}
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
+const ML_BASE =
+  process.env.NEXT_PUBLIC_ML_URL ?? "http://localhost:8000";
+
+// ─────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────
 
 interface NodeInspectorProps {
   node: GraphNode | null;
   onClose: () => void;
 }
 
-interface SectionProps {
-  title: string;
-  children: React.ReactNode;
-}
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
 
-interface MetricProps {
+const scoreColor = (score: number): string => {
+  if (score > 0.7) return "#ef4444";
+  if (score > 0.4) return "#f59e0b";
+  return "#22c55e";
+};
+
+const Badge = ({
+  label,
+  color,
+}: {
   label: string;
-  value: string | number;
-  highlight?: boolean;
-  color?: "red" | "green";
-}
+  color: string;
+}) => (
+  <span
+    style={{
+      background: color + "22",
+      border: `1px solid ${color}`,
+      color,
+      borderRadius: 4,
+      padding: "2px 8px",
+      fontSize: 11,
+      fontWeight: 600,
+      marginRight: 4,
+    }}
+  >
+    {label}
+  </span>
+);
 
-interface TabButtonProps {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}
+const Row = ({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: React.ReactNode;
+  valueColor?: string;
+}) => (
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: "7px 0",
+      borderBottom: "1px solid #1e293b",
+    }}
+  >
+    <span style={{ color: "#64748b", fontSize: 12 }}>{label}</span>
+    <span style={{ color: valueColor ?? "#e2e8f0", fontSize: 12, fontWeight: 500 }}>
+      {value}
+    </span>
+  </div>
+);
 
-interface ShapSlideProps {
-  reasons: string[];
-  loading: boolean;
-  isAnomalous: boolean;
-}
+// ─────────────────────────────────────────────────────────────
+// Component
+// ─────────────────────────────────────────────────────────────
 
-interface AISlideProps {
-  aiText: string | null;
-  loading: boolean;
-  onGenerate: () => void;
-}
+const NodeInspector: React.FC<NodeInspectorProps> = ({ node, onClose }) => {
+  const [aiText, setAiText] = useState<string>("");
+  const [loadingAI, setLoadingAI] = useState(false);
 
-/* ================= COMPONENT ================= */
+  // ── fetch AI explanation whenever selected node changes ──
+  const generateAIExplanation = useCallback(async () => {
+    if (!node) return;
+    setLoadingAI(true);
+    setAiText("");
 
-export default function NodeInspector({
-  node,
-  onClose,
-}: NodeInspectorProps) {
-  const [aiText, setAiText] = useState<string | null>(null);
-  const [loadingAI, setLoadingAI] = useState<boolean>(false);
-  const [closing, setClosing] = useState<boolean>(false);
-  const [activeSlide, setActiveSlide] = useState<"shap" | "ai">("shap");
+    try {
+      // Step 1: get the scored subgraph to extract score_breakdown
+      const graphRes = await fetch(
+        `${API_BASE}/api/graph/scored-subgraph?accountId=${node.id}&depth=1`
+      );
+      const graphData = await graphRes.json();
+      const flaggedNode = (graphData.nodes ?? []).find(
+        (n: any) => String(n.id) === String(node.id)
+      );
+      const scoreBreakdown = flaggedNode?.score_breakdown ?? {};
 
-  const nodeId = node ? Number(node.id) : null;
-  const { explanation, loading } = useExplanations(nodeId);
+      // Step 2: call Rupali's explanation endpoint
+      const explainRes = await fetch(`${ML_BASE}/ml/explain`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          alert_id: `GRAPH-${node.id}`,
+          score_breakdown: scoreBreakdown,
+        }),
+      });
+      const explainData = await explainRes.json();
+      setAiText(
+        explainData.explanation ??
+          `Account ${node.id} flagged with AnomaScore ${(
+            (node.anomalyScore ?? 0) * 100
+          ).toFixed(1)}%.`
+      );
+    } catch {
+      // Graceful fallback — still shows something useful
+      const score = (node.anomalyScore ?? 0) * 100;
+      const patterns = (node.patterns ?? []).join(" + ") || "unclassified";
+      setAiText(
+        `Account ${node.id} flagged with AnomaScore ${score.toFixed(
+          1
+        )}%. ` +
+          `Detected pattern(s): ${patterns}. ` +
+          (node.kyc_risk_tier === "HIGH"
+            ? "KYC tier is HIGH — elevated due-diligence required."
+            : `KYC tier: ${node.kyc_risk_tier ?? "LOW"}.`) +
+          (node.is_dormant
+            ? " Account was previously dormant and recently reactivated."
+            : "")
+      );
+    } finally {
+      setLoadingAI(false);
+    }
+  }, [node]);
+
+  useEffect(() => {
+    if (node) generateAIExplanation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node?.id]);
 
   if (!node) return null;
 
-  const isAnomalous =
-    node.is_anomalous === true || node.is_anomalous === 1;
-
-  const reasons: string[] = explanation?.reasons ?? [];
-
-  const generateAIExplanation = () => {
-    setLoadingAI(true);
-
-    setTimeout(() => {
-      setAiText(
-        `Account ${node.id} shows unusual transaction behavior with high connectivity 
-to anomalous accounts. Rapid inflow and outflow patterns indicate potential mule activity.`
-      );
-      setLoadingAI(false);
-    }, 1200);
-  };
-
-  const handleClose = () => {
-    setClosing(true);
-
-    setTimeout(() => {
-      setAiText(null);
-      setClosing(false);
-      onClose();
-    }, 250);
-  };
+  const score = node.anomalyScore ?? 0;
+  const patterns = node.patterns ?? [];
+  const kycTier = node.kyc_risk_tier ?? "LOW";
 
   return (
-    <aside
-      className={`fixed right-0 top-0 pt-10 z-50 w-[380px] h-screen overflow-y-auto
-        ${closing ? "animate-slide-out" : "animate-slide-in"}
-        ${
-          isAnomalous
-            ? "bg-zinc-900 border-l border-red-600 shadow-[0_0_20px_rgba(239,68,68,0.4)]"
-            : "bg-zinc-900 border-l border-green-600 shadow-[0_0_20px_rgba(34,197,94,0.4)]"
-        }
-      `}
+    <div
+      style={{
+        position: "absolute",
+        right: 16,
+        top: 16,
+        bottom: 16,
+        width: 340,
+        background: "rgba(8,12,22,0.96)",
+        border: "1px solid #1e293b",
+        borderRadius: 12,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        zIndex: 20,
+        backdropFilter: "blur(12px)",
+      }}
     >
-      {/* HEADER */}
-      <div className="flex justify-between items-center px-5">
-        <h2 className="text-lg font-semibold">
-          Node Forensics:{" "}
-          <span
-            className={
-              isAnomalous ? "text-red-400" : "text-green-400"
-            }
+      {/* ── Header ── */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "14px 16px",
+          borderBottom: "1px solid #1e293b",
+        }}
+      >
+        <div>
+          <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 2 }}>
+            ACCOUNT
+          </div>
+          <div
+            style={{
+              color: "#e2e8f0",
+              fontSize: 15,
+              fontWeight: 700,
+              fontFamily: "monospace",
+            }}
           >
-            ACC{node.id}
-          </span>
-        </h2>
+            {node.id}
+          </div>
+        </div>
         <button
-          onClick={handleClose}
-          className="text-gray-400 hover:text-white cursor-pointer"
+          onClick={onClose}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "#475569",
+            cursor: "pointer",
+            fontSize: 20,
+            lineHeight: 1,
+          }}
         >
-          ✕
+          ×
         </button>
       </div>
 
-      {/* ACCOUNT SUMMARY */}
-      <Section title="Account Summary">
-        <Metric
-          label="Risk Status"
-          value={isAnomalous ? "Anomalous" : "Normal"}
-          highlight={isAnomalous}
-        />
-       <Metric
-          label="Risk Score"
+      {/* ── Score pill ── */}
+      <div style={{ padding: "14px 16px", borderBottom: "1px solid #1e293b" }}>
+        <div style={{ color: "#64748b", fontSize: 11, marginBottom: 8 }}>
+          ANOMASCORE
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {/* bar */}
+          <div
+            style={{
+              flex: 1,
+              height: 6,
+              background: "#1e293b",
+              borderRadius: 99,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${score * 100}%`,
+                background: scoreColor(score),
+                borderRadius: 99,
+                transition: "width 0.4s ease",
+              }}
+            />
+          </div>
+          <span
+            style={{
+              color: scoreColor(score),
+              fontSize: 18,
+              fontWeight: 700,
+              minWidth: 44,
+              textAlign: "right",
+            }}
+          >
+            {(score * 100).toFixed(1)}%
+          </span>
+        </div>
+      </div>
+
+      {/* ── Details ── */}
+      <div style={{ padding: "0 16px" }}>
+        <Row
+          label="Pattern"
           value={
-            node.anomalyScore !== undefined
-              ? Math.abs(node.anomalyScore * 100).toFixed(1)
-              : "N/A"
+            patterns.length ? (
+              <>
+                {patterns.map((p) => (
+                  <Badge
+                    key={p}
+                    label={p}
+                    color={p === "CIRCULAR" ? "#ef4444" : "#f59e0b"}
+                  />
+                ))}
+              </>
+            ) : (
+              <span style={{ color: "#475569" }}>None</span>
+            )
           }
         />
-      </Section>
-
-      {/* METRICS */}
-      <Section title="Metrics">
-        <Metric
-          label="Total Transactions"
-          value={Math.round(node.volume ?? node.size ?? 0)}
+        <Row
+          label="KYC Tier"
+          value={kycTier}
+          valueColor={
+            kycTier === "HIGH"
+              ? "#ef4444"
+              : kycTier === "MEDIUM"
+              ? "#f59e0b"
+              : "#22c55e"
+          }
         />
-        <Metric label="Suspicious vs Normal" value="40 / 160" />
-        <Metric
-          label="Connectivity Score"
-          value="92"
-          color={isAnomalous ? "red" : "green"}
+        <Row
+          label="Dormant"
+          value={node.is_dormant ? "Yes" : "No"}
+          valueColor={node.is_dormant ? "#f59e0b" : "#22c55e"}
         />
-      </Section>
+        {node.cycle_path?.length ? (
+          <Row
+            label="Cycle length"
+            value={`${node.cycle_path.length} nodes`}
+            valueColor="#ef4444"
+          />
+        ) : null}
+      </div>
 
-      {/* EXPLAINABILITY */}
-      <Section title="Explainability">
-        <div className="flex mb-4 rounded-md overflow-hidden border border-zinc-700">
-          <TabButton
-            active={activeSlide === "shap"}
-            onClick={() => setActiveSlide("shap")}
-          >
-            SHAP Explainability
-          </TabButton>
-
-          <TabButton
-            active={activeSlide === "ai"}
-            onClick={() => setActiveSlide("ai")}
-          >
-            AI Explanation
-          </TabButton>
-        </div>
-
-        <div className="min-h-[140px] transition-all">
-          {activeSlide === "shap" ? (
-            <ShapSlide
-              reasons={reasons}
-              loading={loading}
-              isAnomalous={isAnomalous}
-            />
-          ) : (
-            <AISlide
-              aiText={aiText}
-              loading={loadingAI}
-              onGenerate={generateAIExplanation}
+      {/* ── AI Explanation ── */}
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "14px 16px",
+          borderTop: "1px solid #1e293b",
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
+        <div
+          style={{
+            color: "#64748b",
+            fontSize: 11,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <span>AI EXPLANATION</span>
+          {loadingAI && (
+            <span
+              style={{
+                display: "inline-block",
+                width: 10,
+                height: 10,
+                borderRadius: "50%",
+                border: "2px solid #3b82f6",
+                borderTopColor: "transparent",
+                animation: "spin 0.8s linear infinite",
+              }}
             />
           )}
         </div>
-      </Section>
-
-      {/* ACTIONS */}
-      <div className="flex gap-3 p-5">
-        <button className="flex-1 rounded-md border border-green-500 text-green-400 py-2">
-          Mark as Safe
-        </button>
-        <button className="flex-1 rounded-md bg-red-600 py-2">
-          Initiate Freeze
-        </button>
-      </div>
-    </aside>
-  );
-}
-
-/* ================= SUB COMPONENTS ================= */
-
-function Section({ title, children }: SectionProps) {
-  return (
-    <div className="p-5 border-b border-zinc-800">
-      <h3 className="mb-3 text-sm font-semibold uppercase text-gray-400">
-        {title}
-      </h3>
-      {children}
-    </div>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  highlight,
-  color,
-}: MetricProps) {
-  const colorClass =
-    color === "red"
-      ? "text-red-400"
-      : color === "green"
-      ? "text-green-400"
-      : "";
-
-  return (
-    <div className="flex justify-between text-sm mb-2">
-      <span className="text-gray-400">{label}</span>
-      <span
-        className={`${highlight ? "font-semibold" : ""} ${colorClass}`}
-      >
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: TabButtonProps) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex-1 py-2 text-sm font-medium
-        ${
-          active
-            ? "bg-zinc-800 text-white"
-            : "bg-zinc-900 text-gray-400 hover:text-white"
-        }
-      `}
-    >
-      {children}
-    </button>
-  );
-}
-
-function ShapSlide({
-  reasons,
-  loading,
-  isAnomalous,
-}: ShapSlideProps) {
-  if (loading)
-    return (
-      <p className="text-xs text-gray-500">Loading…</p>
-    );
-
-  if (!reasons.length) {
-    return (
-      <p className="text-xs text-gray-500 italic">
-        No strong SHAP signals for this account.
-      </p>
-    );
-  }
-
-  return (
-    <ul className="space-y-2">
-      {reasons.map((reason, i) => (
-        <li
-          key={i}
-          className={`flex gap-2 items-start p-2 rounded-md text-sm
-            ${
-              isAnomalous
-                ? "bg-red-950/40 text-red-200"
-                : "bg-green-950/40 text-green-200"
-            }`}
-        >
-          <span className="mt-0.5">▸</span>
-          <span>{reason}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function AISlide({
-  aiText,
-  loading,
-  onGenerate,
-}: AISlideProps) {
-  return (
-    <>
-      <div className="min-h-[80px] mb-3">
-        {aiText ? (
-          <div className="bg-zinc-800 p-3 rounded-md text-sm text-gray-200">
-            {aiText}
+        {loadingAI ? (
+          <div style={{ color: "#475569", fontSize: 13 }}>
+            Generating explanation…
           </div>
         ) : (
-          <p className="text-xs text-gray-500 italic">
-            Generate a natural language explanation based on model signals.
+          <p style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.65, margin: 0 }}>
+            {aiText || "No explanation available."}
           </p>
         )}
       </div>
 
-      <button
-        onClick={onGenerate}
-        disabled={loading}
-        className="w-full rounded-md bg-white text-black py-2 text-sm font-medium hover:bg-gray-200"
+      {/* ── Actions ── */}
+      <div
+        style={{
+          padding: "12px 16px",
+          borderTop: "1px solid #1e293b",
+          display: "flex",
+          gap: 8,
+        }}
       >
-        {loading ? "Generating..." : "Generate AI Summary"}
-      </button>
-    </>
+        <a
+          href={`/alerts?accountId=${node.id}`}
+          style={{
+            flex: 1,
+            textAlign: "center",
+            padding: "8px",
+            borderRadius: 6,
+            background: "#1e293b",
+            color: "#60a5fa",
+            fontSize: 13,
+            fontWeight: 500,
+            textDecoration: "none",
+            border: "1px solid #334155",
+          }}
+        >
+          View Alert →
+        </a>
+        <a
+          href={`/cases/create?alertId=GRAPH-${node.id}`}
+          style={{
+            flex: 1,
+            textAlign: "center",
+            padding: "8px",
+            borderRadius: 6,
+            background: "#ef44441a",
+            color: "#ef4444",
+            fontSize: 13,
+            fontWeight: 500,
+            textDecoration: "none",
+            border: "1px solid #ef444444",
+          }}
+        >
+          Open Case →
+        </a>
+      </div>
+
+      {/* spin keyframes */}
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
   );
-}
+};
+
+export default NodeInspector;

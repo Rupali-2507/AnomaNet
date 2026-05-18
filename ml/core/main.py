@@ -34,6 +34,8 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from core.graph.graph_api import graph_router
+
 
 from core.graph.neo4j_client import health_check as neo4j_health
 from core.scoring.anoma_score import compute_anoma_score, update_weights, get_weights
@@ -141,7 +143,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+app.include_router(graph_router)
 # ── Plug in Rupali's explainability router (one line) ────────────────────────
 try:
     from modules.explainability.router import explain_router
