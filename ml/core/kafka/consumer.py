@@ -280,6 +280,7 @@ def start_consumer():
         try:
             log.info("Connecting to Kafka at %s...", KAFKA_SERVERS)
 
+            # In consumer.py — replace the KafkaConsumer instantiation
             consumer = KafkaConsumer(
                 SCORING_TOPIC,
                 bootstrap_servers     = KAFKA_SERVERS,
@@ -290,6 +291,11 @@ def start_consumer():
                 max_poll_records      = MAX_POLL_RECORDS,
                 session_timeout_ms    = SESSION_TIMEOUT_MS,
                 value_deserializer    = lambda v: json.loads(v.decode("utf-8")),
+                # Add these for Upstash:
+                security_protocol     = "SASL_SSL",
+                sasl_mechanism        = "SCRAM-SHA-256",
+                sasl_plain_username   = os.getenv("KAFKA_SASL_USERNAME"),
+                sasl_plain_password   = os.getenv("KAFKA_SASL_PASSWORD"),
             )
 
             producer = KafkaProducer(
