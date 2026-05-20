@@ -8,7 +8,6 @@ spring:
   autoconfigure:
     exclude: org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
 
-  # ── PostgreSQL ──────────────────────────────────────────────────────────
   datasource:
     url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/anomanet}
     username: ${POSTGRES_USER:anomanet}
@@ -27,60 +26,65 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
-  # ── Flyway ─────────────────────────────────────────────────────────────
   flyway:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
 
-  # ── Neo4j ──────────────────────────────────────────────────────────────
   neo4j:
-    uri: ${NEO4J_URI:bolt://localhost:7687}
+    uri: ${NEO4J_URI:neo4j+s://25be8718.databases.neo4j.io}
     authentication:
-      username: ${NEO4J_USER:neo4j}
-      password: ${NEO4J_PASSWORD:anomanet2024}
+      username: ${NEO4J_USER:25be8718}
+      password: ${NEO4J_PASSWORD:1DyBOEAhD0qAYQrEg66uczjxEt1o_ubbfAmBEhmyrCM}
 
-  # ── Kafka ──────────────────────────────────────────────────────────────
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:d8642r0hvfrjvm53hfug.any.us-east-1.mpx.prd.cloud.redpanda.com:9092}
     consumer:
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        security.protocol: SASL_SSL
+        sasl.mechanism: SCRAM-SHA-256
+        sasl.jaas.config: >
+          org.apache.kafka.common.security.scram.ScramLoginModule required
+          username="${KAFKA_SASL_USERNAME:anomanet}"
+          password="${KAFKA_SASL_PASSWORD:MuVwePtzcJymOoQEq0dmDeQKCop5JQ}";
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
       acks: all
+      properties:
+        security.protocol: SASL_SSL
+        sasl.mechanism: SCRAM-SHA-256
+        sasl.jaas.config: >
+          org.apache.kafka.common.security.scram.ScramLoginModule required
+          username="${KAFKA_SASL_USERNAME:anomanet}"
+          password="${KAFKA_SASL_PASSWORD:MuVwePtzcJymOoQEq0dmDeQKCop5JQ}";
 
-  # ── WebSocket ──────────────────────────────────────────────────────────
   websocket:
     message-size-limit: 131072
 
-# ── JWT ──────────────────────────────────────────────────────────────────
 jwt:
   secret: ${JWT_SECRET:3f4a8b2c1d9e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a}
-  expiration-ms: 86400000          # 24h
-  refresh-expiration-ms: 604800000 # 7d
+  expiration-ms: 86400000
+  refresh-expiration-ms: 604800000
 
-# ── Kafka topic names ─────────────────────────────────────────────────────
 kafka:
   topics:
     raw-transactions: raw.transactions
     ml-scoring-queue: ml.scoring.queue
     alerts-generated: alerts.generated
 
-# ── ML service ───────────────────────────────────────────────────────────
 ml:
   service:
     url: ${ML_SERVICE_URL:http://localhost:8000}
 
-# ── Thresholds ───────────────────────────────────────────────────────────
 anomanet:
   threshold:
     anoma-score: ${ANOMASCORE_THRESHOLD:0.65}
     pep: ${PEP_THRESHOLD:0.45}
 
-# ── Actuator ─────────────────────────────────────────────────────────────
 management:
   endpoints:
     web:
@@ -90,7 +94,6 @@ management:
     health:
       show-details: always
 
-# ── OpenAPI ──────────────────────────────────────────────────────────────
 springdoc:
   swagger-ui:
     path: /swagger-ui
