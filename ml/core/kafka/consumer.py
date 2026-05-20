@@ -35,6 +35,8 @@ from typing import Optional
 log = logging.getLogger(__name__)
 
 KAFKA_SERVERS      = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+KAFKA_USERNAME     = os.getenv("KAFKA_SASL_USERNAME", "")
+KAFKA_PASSWORD     = os.getenv("KAFKA_SASL_PASSWORD", "")
 SCORING_TOPIC      = "ml.scoring.queue"
 ALERTS_TOPIC       = "alerts.generated"
 DLQ_TOPIC          = "scoring.dlq"
@@ -282,20 +284,28 @@ def start_consumer():
 
             consumer = KafkaConsumer(
                 SCORING_TOPIC,
-                bootstrap_servers     = KAFKA_SERVERS,
-                group_id              = CONSUMER_GROUP,
-                auto_offset_reset     = "latest",
-                enable_auto_commit    = True,
+                bootstrap_servers       = KAFKA_SERVERS,
+                group_id                = CONSUMER_GROUP,
+                auto_offset_reset       = "latest",
+                enable_auto_commit      = True,
                 auto_commit_interval_ms = 5000,
-                max_poll_records      = MAX_POLL_RECORDS,
-                session_timeout_ms    = SESSION_TIMEOUT_MS,
-                value_deserializer    = lambda v: json.loads(v.decode("utf-8")),
+                max_poll_records        = MAX_POLL_RECORDS,
+                session_timeout_ms      = SESSION_TIMEOUT_MS,
+                value_deserializer      = lambda v: json.loads(v.decode("utf-8")),
+                security_protocol       = "SASL_SSL",
+                sasl_mechanism          = "SCRAM-SHA-256",
+                sasl_plain_username     = KAFKA_USERNAME,
+                sasl_plain_password     = KAFKA_PASSWORD,
             )
 
             producer = KafkaProducer(
-                bootstrap_servers = KAFKA_SERVERS,
-                acks              = "all",
-                retries           = 3,
+                bootstrap_servers   = KAFKA_SERVERS,
+                acks                = "all",
+                retries             = 3,
+                security_protocol   = "SASL_SSL",
+                sasl_mechanism      = "SCRAM-SHA-256",
+                sasl_plain_username = KAFKA_USERNAME,
+                sasl_plain_password = KAFKA_PASSWORD,
             )
 
             log.info("Kafka consumer ready — listening on %s", SCORING_TOPIC)

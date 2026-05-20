@@ -365,8 +365,12 @@ def _publish_scenario_transactions(txns, scenario_id: str):
         from kafka import KafkaProducer
 
         producer = KafkaProducer(
-            bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
-            value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+            bootstrap_servers   = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+            value_serializer    = lambda v: json.dumps(v).encode("utf-8"),
+            security_protocol   = "SASL_SSL",
+            sasl_mechanism      = "SCRAM-SHA-256",
+            sasl_plain_username = os.getenv("KAFKA_SASL_USERNAME", ""),
+            sasl_plain_password = os.getenv("KAFKA_SASL_PASSWORD", ""),
         )
         for tx in txns:
             msg = {
