@@ -63,7 +63,7 @@ public class GraphQueryService {
                 });
         } catch (Exception e) {
             log.error("Subgraph query failed for {}: {}", accountId, e.getMessage());
-            // Return root node at minimum
+            // Return root node at minimum so the graph always mounts
             GraphDtos.GraphNode root = new GraphDtos.GraphNode();
             root.setId(accountId);
             root.setLabel(accountId);
@@ -72,7 +72,7 @@ public class GraphQueryService {
             nodes.add(root);
         }
 
-        // Ensure root node always present
+        // Ensure root node is always present
         if (nodes.stream().noneMatch(n -> accountId.equals(n.getId()))) {
             GraphDtos.GraphNode root = new GraphDtos.GraphNode();
             root.setId(accountId);
@@ -131,6 +131,33 @@ public class GraphQueryService {
         }
     }
 
+    // Fetches high-risk accounts (anoma_score > 0.5) for the graph explorer dropdown
+    public List<Map<String, Object>> getFlaggedAccounts() {
+        // In GraphQueryService.getFlaggedAccounts()
+        String cypher = """
+            MATCH (a:Account)
+            WHERE coalesce(a.anoma_score, 0.0) > 0.0
+            RETURN a.id AS id,
+                coalesce(a.anoma_score, 0.0) AS score,
+                coalesce(a.kyc_risk_tier, 'LOW') AS kyc_tier
+            ORDER BY score DESC
+            LIMIT 50
+            """;
+        List<Map<String, Object>> result = new ArrayList<>();
+        try {
+            neo4jClient.query(cypher).fetch().all().forEach(row -> {
+                Map<String, Object> acc = new HashMap<>();
+                acc.put("id", String.valueOf(row.get("id")));
+                acc.put("score", row.get("score") != null ? ((Number) row.get("score")).doubleValue() : 0.0);
+                acc.put("kyc_tier", String.valueOf(row.getOrDefault("kyc_tier", "LOW")));
+                result.add(acc);
+            });
+        } catch (Exception e) {
+            log.error("getFlaggedAccounts failed: {}", e.getMessage());
+        }
+        return result;
+    }
+
     public List<GraphDtos.CycleResult> detectCycles(String accountId, int maxLength, int hours) {
         int ml = Math.min(Math.max(maxLength, 2), 7);
         String cypher = String.format("""
@@ -152,9 +179,9 @@ public class GraphQueryService {
                 .forEach(row -> {
                     GraphDtos.CycleResult r = new GraphDtos.CycleResult();
                     r.setPath((List<String>) row.get("pathIds"));
-                    double avg = row.get("avgAmt") != null ? ((Number)row.get("avgAmt")).doubleValue() : 1;
-                    double min = row.get("minAmt") != null ? ((Number)row.get("minAmt")).doubleValue() : 0;
-                    double max = row.get("maxAmt") != null ? ((Number)row.get("maxAmt")).doubleValue() : 0;
+                    double avg = row.get("avgAmt") != null ? ((Number) row.get("avgAmt")).doubleValue() : 1;
+                    double min = row.get("minAmt") != null ? ((Number) row.get("minAmt")).doubleValue() : 0;
+                    double max = row.get("maxAmt") != null ? ((Number) row.get("maxAmt")).doubleValue() : 0;
                     r.setAmountVariance(avg > 0 ? (max - min) / avg : 0);
                     r.setCompletionHours(hours);
                     results.add(r);
@@ -178,8 +205,8 @@ public class GraphQueryService {
                 .bind(accountId).to("accountId")
                 .fetch().first()
                 .ifPresent(row -> {
-                    stats.setDegreeOut(((Number)row.get("degreeOut")).longValue());
-                    stats.setDegreeIn(((Number)row.get("degreeIn")).longValue());
+                    stats.setDegreeOut(((Number) row.get("degreeOut")).longValue());
+                    stats.setDegreeIn(((Number) row.get("degreeIn")).longValue());
                     stats.setCentrality(0.0);
                     stats.setClusterId("N/A");
                 });

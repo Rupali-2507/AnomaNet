@@ -15,21 +15,21 @@ public class CaseNote {
     @Column(name = "case_id", nullable = false)
     private UUID caseId;
 
-    @Column(name = "author_id", nullable = false)
+    @Column(name = "author_id")          // ← removed nullable=false; DB column IS nullable
     private UUID authorId;
 
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
-    private String note;
+    private String note;                 // ← field "note" correctly mapped to DB column "content"
 
     @Column(name = "created_at")
     private Instant createdAt = Instant.now();
 
-    public UUID getId() { return id; }
-    public UUID getCaseId() { return caseId; }
-    public void setCaseId(UUID v) { caseId = v; }
-    public UUID getAuthorId() { return authorId; }
+    public UUID getId()             { return id; }
+    public UUID getCaseId()         { return caseId; }
+    public void setCaseId(UUID v)   { caseId = v; }
+    public UUID getAuthorId()       { return authorId; }
     public void setAuthorId(UUID v) { authorId = v; }
-    public String getNote() { return note; }
-    public void setNote(String v) { note = v; }
-    public Instant getCreatedAt() { return createdAt; }
+    public String getNote()         { return note; }
+    public void setNote(String v)   { note = v; }
+    public Instant getCreatedAt()   { return createdAt; }
 }

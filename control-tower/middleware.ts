@@ -1,37 +1,30 @@
-import NextAuth from "next-auth";
-import { authConfig } from "./auth.config";
+// middleware.ts — place at project root beside package.json
+import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
-const { auth } = NextAuth(authConfig);
-
 export default auth((req) => {
-  const { nextUrl } = req;
-  const isLoggedIn = !!req.auth;
-  const role = req.auth?.user?.role; 
+  const { pathname } = req.nextUrl;
+  const role = (req.auth?.user as any)?.role as string | undefined;
 
-  const isLoginPage = nextUrl.pathname === "/login";
-  const isAdminPage = nextUrl.pathname.startsWith("/admin");
-  const isApiAuthRoute = nextUrl.pathname.startsWith("/api/auth");
-  const isPublicApiRoute = nextUrl.pathname.startsWith("/api/user/role");
-
-  if (isApiAuthRoute) return NextResponse.next();
-  
-  if (isLoginPage && isLoggedIn) {
-    return NextResponse.redirect(new URL("/", nextUrl));
+  // Not logged in — redirect to login
+  if (!req.auth) {
+    return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  if (isAdminPage) {
-    if (!isLoggedIn) {
-      return NextResponse.redirect(new URL("/login", nextUrl));
-    }
-    if (role !== "admin") {
-      return NextResponse.redirect(new URL("/", nextUrl));
-    }
+  // /admin — ADMIN only
+  if (pathname.startsWith("/admin") && role !== "ADMIN") {
+    return NextResponse.redirect(new URL("/", req.url));
   }
-  
+
   return NextResponse.next();
 });
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    "/admin/:path*",
+    "/monitoring/:path*",
+    "/investigation/:path*",
+    "/reporting/:path*",
+    "/service/:path*",
+  ],
 };

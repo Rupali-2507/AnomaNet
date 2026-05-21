@@ -1,5 +1,6 @@
 package com.anomanet.graph.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 public class GraphDtos {
@@ -56,11 +57,23 @@ public class GraphDtos {
     public static class GraphNode {
         private String id;
         private String label;
+
+        // @JsonProperty keeps JSON keys in snake_case to match what the frontend reads
+        @JsonProperty("anoma_score")
         private double anomaScore;
+
+        @JsonProperty("account_type")
         private String accountType;
+
+        @JsonProperty("is_dormant")
         private boolean isDormant;
+
+        @JsonProperty("kyc_risk_tier")
         private String kycRiskTier;
+
+        @JsonProperty("branch_id")
         private String branchId;
+
         public String getId() { return id; }
         public void setId(String v) { id = v; }
         public String getLabel() { return label; }
@@ -83,7 +96,10 @@ public class GraphDtos {
         private double amount;
         private String timestamp;
         private String channel;
+
+        @JsonProperty("tx_id")
         private String txId;
+
         public String getSource() { return source; }
         public void setSource(String v) { source = v; }
         public String getTarget() { return target; }

@@ -220,7 +220,7 @@ def compute_anoma_score(
     )
 
     # ── 8. Detected patterns ─────────────────────────────────────────────────
-    PATTERN_THRESHOLD = 0.50   # a pattern is "detected" if its score > 0.5
+    PATTERN_THRESHOLD = 0.15   # a pattern is "detected" if its score > alert threshold
     detected = []
     if score_breakdown["layering"]         > PATTERN_THRESHOLD: detected.append("LAYERING")
     if score_breakdown["circular"]         > PATTERN_THRESHOLD: detected.append("CIRCULAR")

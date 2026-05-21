@@ -11,16 +11,27 @@ import org.springframework.web.bind.annotation.*;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.reactive.function.client.WebClient;
+import java.util.List;
+
+
 
 @RestController
 @RequestMapping("/api/alerts")
 public class AlertController {
 
     private final AlertRepository alertRepository;
+    private static final Logger log = LoggerFactory.getLogger(AlertController.class);
+    private final WebClient mlWebClient;
 
-    public AlertController(AlertRepository alertRepository) {
-        this.alertRepository = alertRepository;
-    }
+    public AlertController(AlertRepository alertRepository,
+                       @Value("${ml.service.url}") String mlServiceUrl) {
+    this.alertRepository = alertRepository;
+    this.mlWebClient = WebClient.builder().baseUrl(mlServiceUrl).build();
+}
 
     @GetMapping
     public ResponseEntity<Page<Alert>> list(
@@ -60,22 +71,40 @@ public class AlertController {
 
     @GetMapping("/{id}/explanation")
     public ResponseEntity<Map<String, Object>> getExplanation(@PathVariable UUID id) {
-        // Stub — Rupali's ML explainability module provides the real text via /ml/explain
-        // This endpoint fetches from ML service or returns a placeholder
         return alertRepository.findById(id).map(alert -> {
-            String narrative = String.format(
-                "Account %s triggered a %s alert with AnomaScore %.2f. " +
-                "Pattern analysis indicates suspicious transaction behaviour requiring investigation.",
-                alert.getAccountId(), alert.getAlertType().name(), alert.getAnomaScore()
-            );
-            return ResponseEntity.ok(Map.<String, Object>of(
-                "explanation", narrative,
-                "evidence_points", java.util.List.of(
-                    "AnomaScore: " + String.format("%.4f", alert.getAnomaScore()),
-                    "Pattern: " + alert.getAlertType().name(),
-                    "Status: " + alert.getStatus().name()
-                )
-            ));
+            try {
+                Map<String, Object> requestBody = Map.of(
+                    "alert_id",       alert.getId().toString(),
+                    "score_breakdown", alert.getScoreBreakdown()
+                );
+                Map<?, ?> mlResponse = mlWebClient.post()
+                    .uri("/ml/explain")
+                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                    .bodyValue(requestBody)
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+
+                String explanation = mlResponse != null
+                    ? (String) mlResponse.get("explanation") : "Explanation unavailable.";
+                List<?> patterns = mlResponse != null
+                    ? (List<?>) mlResponse.get("patterns") : List.of();
+
+                return ResponseEntity.ok(Map.<String, Object>of(
+                    "explanation",    explanation,
+                    "evidence_points", alert.getScoreBreakdown().entrySet().stream()
+                        .filter(e -> e.getValue() > 0.4)
+                        .map(e -> e.getKey() + ": " + String.format("%.4f", e.getValue()))
+                        .toList(),
+                    "patterns", patterns
+                ));
+            } catch (Exception e) {
+                log.error("ML explain call failed for alert {}: {}", id, e.getMessage());
+                return ResponseEntity.ok(Map.<String, Object>of(
+                    "explanation", "Explanation temporarily unavailable.",
+                    "evidence_points", List.of()
+                ));
+            }
         }).orElse(ResponseEntity.notFound().build());
     }
 
