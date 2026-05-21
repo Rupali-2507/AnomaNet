@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/graph")
@@ -38,5 +39,20 @@ public class GraphController {
     @GetMapping("/account/{id}/stats")
     public ResponseEntity<GraphDtos.AccountStats> stats(@PathVariable String id) {
         return ResponseEntity.ok(graphQueryService.getAccountStats(id));
+    }
+
+    // Returns the list of high-risk accounts to populate the graph explorer dropdown
+    @GetMapping("/flagged-accounts")
+    public ResponseEntity<Map<String, Object>> flaggedAccounts() {
+        List<Map<String, Object>> accounts = graphQueryService.getFlaggedAccounts();
+        return ResponseEntity.ok(Map.of("accounts", accounts));
+    }
+
+    // Serves the 3D graph explorer; accepts query params instead of a POST body
+    @GetMapping("/scored-subgraph")
+    public ResponseEntity<GraphDtos.SubgraphResponse> scoredSubgraph(
+            @RequestParam String accountId,
+            @RequestParam(defaultValue = "3") int depth) {
+        return ResponseEntity.ok(graphQueryService.getSubgraph(accountId, depth, 168));
     }
 }

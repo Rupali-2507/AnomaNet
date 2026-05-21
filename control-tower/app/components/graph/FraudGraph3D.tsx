@@ -150,11 +150,14 @@ const FraudGraph3D: React.FC<FraudGraph3DProps> = ({
       );
       const data = await res.json();
 
+      // FIX: read anoma_score (snake_case) from JSON — matches @JsonProperty on the DTO.
+      //      is_flagged never existed in the backend; derive is_anomalous from the score only.
       let nodes: GraphNode[] = data.nodes.map(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (n: any): GraphNode => ({
           id: n.id,
-          is_anomalous: n.is_flagged || n.anoma_score > 0.5,
-          anomalyScore: n.anoma_score,
+          is_anomalous: (n.anoma_score ?? 0) > 0.5,
+          anomalyScore: n.anoma_score ?? 0,
           patterns: n.patterns ?? [],
           cycle_path: n.cycle_path ?? [],
           kyc_risk_tier: n.kyc_risk_tier ?? "LOW",
@@ -163,8 +166,11 @@ const FraudGraph3D: React.FC<FraudGraph3DProps> = ({
         })
       );
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let links: GraphLink[] = data.edges
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .filter((l: any) => l.source && l.target)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .map((l: any) => ({
           source: String(l.source),
           target: String(l.target),
@@ -240,8 +246,6 @@ const FraudGraph3D: React.FC<FraudGraph3DProps> = ({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // ForceGraph3DLib is a CJS factory: call it to get the constructor,
-    // then call the constructor with the DOM element.
     const GraphFactory = getForceGraph3D();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const Graph: FG3DInstance = GraphFactory()(containerRef.current)
@@ -249,28 +253,36 @@ const FraudGraph3D: React.FC<FraudGraph3DProps> = ({
       .width(containerRef.current.offsetWidth)
       .height(containerRef.current.offsetHeight)
       // ── node rendering ──
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .nodeThreeObject((node: any) => buildNodeObject(node as GraphNode))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .nodeLabel((node: any) => getNodeLabel(node as GraphNode))
       // ── link rendering ──
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .linkColor((link: any) =>
         (link.amount ?? 0) > 500000 ? "#ef4444" : "#475569"
       )
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .linkWidth((link: any) =>
         Math.max(0.3, Math.log10(((link.amount ?? 1000) / 1000) + 1) * 0.5)
       )
       .linkDirectionalArrowLength(4)
       .linkDirectionalArrowRelPos(1)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .linkDirectionalArrowColor((link: any) =>
         (link.amount ?? 0) > 500000 ? "#ef4444" : "#60a5fa"
       )
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .linkDirectionalParticles((link: any) =>
         (link.amount ?? 0) > 200000 ? 3 : 1
       )
       .linkDirectionalParticleSpeed(0.004)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .linkDirectionalParticleColor((link: any) =>
         (link.amount ?? 0) > 500000 ? "#ef4444" : "#94a3b8"
       )
       // ── interaction ──
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .onNodeClick((node: any) => {
         const gNode = node as GraphNode;
         setActiveNodeId(gNode.id);
@@ -312,6 +324,7 @@ const FraudGraph3D: React.FC<FraudGraph3DProps> = ({
   // ── re-render nodes when focus changes ──
   useEffect(() => {
     graphRef.current?.nodeThreeObject(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (node: any) => buildNodeObject(node as GraphNode)
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -320,6 +333,7 @@ const FraudGraph3D: React.FC<FraudGraph3DProps> = ({
   // ── toggle labels ──
   useEffect(() => {
     graphRef.current?.nodeLabel(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       showLabels ? (node: any) => String((node as GraphNode).id) : (node: any) => getNodeLabel(node as GraphNode)
     );
   }, [showLabels]);

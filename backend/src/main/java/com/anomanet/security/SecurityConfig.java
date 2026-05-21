@@ -38,7 +38,8 @@ public class SecurityConfig {
                     "/actuator/**",
                     "/ws/**",
                     "/swagger-ui/**",
-                    "/v3/api-docs/**"
+                    "/v3/api-docs/**",
+                    "/api/graph/**"   // graph endpoints are read-only analytics; permit all
                 ).permitAll()
                 .anyRequest().authenticated()
             )

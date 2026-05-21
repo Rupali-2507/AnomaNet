@@ -11,6 +11,11 @@ Exposes:
   get_cycle_candidates(account_id, max_hops, hours) → list[list[str]]
   write_transaction_edge(tx)             → None  (called by Kafka consumer)
   update_anoma_score(account_id, score)  → None
+
+FIXES APPLIED:
+  - get_account_features(): chained OPTIONAL MATCH with intermediate WITH to
+    prevent cartesian product between Customer and Branch nodes (was causing
+    UserWarning + wrong/missing field values returned by .single())
 """
 
 from __future__ import annotations
@@ -180,24 +185,33 @@ def get_account_features(account_id: str) -> dict:
     Fetch static account and customer features from Neo4j.
     Used by dormancy scorer and profile mismatch module.
     Returns empty dict if account not found.
+
+    FIX: Chained OPTIONAL MATCH with intermediate WITH to prevent cartesian
+    product between Customer and Branch nodes. Previously both were matched
+    in parallel causing multiple rows, making .single() return wrong data
+    (declared_monthly_income, occupation etc. coming back as None/0).
     """
     cypher = """
     MATCH (a:Account {id: $account_id})
     OPTIONAL MATCH (c:Customer)-[:OWNS]->(a)
+
+    WITH a, c
+
     OPTIONAL MATCH (b:Branch)<-[:BELONGS_TO]-(a)
+
     RETURN
-        a.account_type           AS account_type,
-        a.kyc_risk_tier          AS kyc_risk_tier,
-        a.is_dormant             AS is_dormant,
-        a.dormant_since          AS dormant_since,
-        a.status                 AS status,
-        a.branch_id              AS branch_id,
-        a.anoma_score            AS anoma_score,
+        a.account_type            AS account_type,
+        a.kyc_risk_tier           AS kyc_risk_tier,
+        a.is_dormant              AS is_dormant,
+        a.dormant_since           AS dormant_since,
+        a.status                  AS status,
+        a.branch_id               AS branch_id,
+        a.anoma_score             AS anoma_score,
         c.declared_monthly_income AS declared_monthly_income,
-        c.occupation             AS occupation,
-        c.risk_tier              AS customer_risk_tier,
-        c.segment                AS segment,
-        b.city                   AS branch_city
+        c.occupation              AS occupation,
+        c.risk_tier               AS customer_risk_tier,
+        c.segment                 AS segment,
+        b.city                    AS branch_city
     """
     try:
         with get_driver().session() as session:
@@ -209,6 +223,8 @@ def get_account_features(account_id: str) -> dict:
     except Exception as e:
         log.error("get_account_features failed for %s: %s", account_id, e)
         return {}
+
+
 def get_high_risk_accounts(limit: int = 20) -> list:
     with get_driver().session() as s:
         result = s.run("""
@@ -219,6 +235,7 @@ def get_high_risk_accounts(limit: int = 20) -> list:
             ORDER BY a.anoma_score DESC LIMIT $limit
         """, limit=limit)
         return [dict(r) for r in result]
+
 
 # ── Counterparty history ──────────────────────────────────────────────────────
 
@@ -475,12 +492,13 @@ def bulk_load_from_simulator(
     _batch_write_nodes(customer_nodes, """
         UNWIND $rows AS row
         MERGE (c:Customer {id: row.id})
-        SET c.name       = row.name,
-            c.kyc_id     = row.kyc_id,
-            c.risk_tier  = row.risk_tier,
-            c.city       = row.city,
-            c.occupation = row.occupation,
-            c.segment    = row.segment
+        SET c.name                   = row.name,
+            c.kyc_id                 = row.kyc_id,
+            c.risk_tier              = row.risk_tier,
+            c.city                   = row.city,
+            c.occupation             = row.occupation,
+            c.segment                = row.segment,
+            c.declared_monthly_income = row.declared_monthly_income
     """, "Customer")
 
     _batch_write_nodes(branch_nodes, """
@@ -507,12 +525,12 @@ def bulk_load_from_simulator(
                     MATCH (src:Account {id: row.source})
                     MATCH (dst:Account {id: row.target})
                     CREATE (src)-[:TRANSFERRED_TO {
-                        tx_id:     row.tx_id,
-                        amount:    toFloat(row.amount),
-                        timestamp: row.timestamp,
-                        channel:   row.channel,
-                        branch_id: row.branch_id,
-                        is_fraud:  row.is_fraud,
+                        tx_id:      row.tx_id,
+                        amount:     toFloat(row.amount),
+                        timestamp:  row.timestamp,
+                        channel:    row.channel,
+                        branch_id:  row.branch_id,
+                        is_fraud:   row.is_fraud,
                         fraud_type: row.fraud_type
                     }]->(dst)
                 """, rows=batch)

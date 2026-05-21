@@ -24,7 +24,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         "/actuator",
         "/ws/",
         "/swagger-ui",
-        "/v3/api-docs"
+        "/v3/api-docs",
+        "/api/graph/"   // graph routes are analytics — no auth required
     );
 
     public JwtAuthFilter(JwtUtil jwtUtil) {

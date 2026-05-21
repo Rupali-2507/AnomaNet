@@ -1,99 +1,158 @@
+// app/login/page.tsx  (or pages/login.tsx if using Pages Router)
 "use client";
-import { useState } from 'react';
+
+import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
-const LoginForm = () => {
-  const [role, setRole] = useState('admin');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  
-  const router = useRouter();
-  const roles = ['admin', 'investigator', 'viewer'];
+type Role = "admin" | "investigator";
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+export default function LoginPage() {
+  const router   = useRouter();
+  const [role,     setRole]     = useState<Role>("admin");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error,    setError]    = useState<string | null>(null);
+  const [loading,  setLoading]  = useState(false);
+
+  const handleSubmit = async () => {
+    setError(null);
     setLoading(true);
 
     const result = await signIn("credentials", {
-      email,
+      redirect:  false,
+      username,
       password,
-      redirect: false, 
+      role,
     });
 
-    if (result?.error) {
-      alert("Access Denied: Invalid Credentials");
-      setLoading(false);
-      return;
-    }
+    setLoading(false);
 
-    if (role === 'admin') {
-      router.push("/admin");
+    if (result?.error) {
+      setError("Access Denied: Invalid credentials");
     } else {
-      router.push("/");
+      router.push("/");   // redirect to dashboard
     }
-    
-    router.refresh(); //update session
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    background: "#1a1a1a",
+    border: "1px solid #2a2a2a",
+    borderRadius: 8,
+    color: "white",
+    padding: "14px 16px",
+    fontSize: 14,
+    outline: "none",
+    boxSizing: "border-box",
   };
 
   return (
-    <div className="w-full max-w-lg md:max-w-xl bg-[#1C1C1C] p-6 md:p-8 rounded-2xl border border-gray-800 shadow-2xl text-center">
-      <h1 className="text-[#CAFF33] text-2xl md:text-3xl font-semibold mb-1">Login</h1>
-      <p className="text-gray-400 text-xs md:text-sm mb-6">Select access level and enter credentials.</p>
-      
-      <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Role Selector */}
-        <div className="space-y-2">
-          <div className="flex p-1 bg-[#141414] rounded-lg border border-gray-800 gap-1">
-            {roles.map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setRole(r)}
-                className={`flex-1 py-2 text-xs font-medium rounded-md transition-all ${
-                  role === r ? "bg-[#262626] text-[#CAFF33] border border-gray-700" : "text-gray-500"
-                }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
+    <div style={{
+      minHeight: "100vh",
+      background: "#0d0d0d",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    }}>
+      <div style={{
+        background: "#161616",
+        border: "1px solid #222",
+        borderRadius: 16,
+        padding: "40px 36px",
+        width: 460,
+      }}>
+
+        {/* Title */}
+        <h1 style={{ textAlign: "center", color: "#c8f000", fontWeight: 700, fontSize: 28, margin: "0 0 8px" }}>
+          Login
+        </h1>
+        <p style={{ textAlign: "center", color: "rgba(255,255,255,0.4)", fontSize: 14, marginBottom: 28 }}>
+          Select access level and enter credentials.
+        </p>
+
+        {/* Role toggle */}
+        <div style={{
+          display: "grid", gridTemplateColumns: "1fr 1fr",
+          background: "#111", borderRadius: 10, padding: 4,
+          marginBottom: 20, border: "1px solid #222",
+        }}>
+          {(["admin", "investigator"] as Role[]).map(r => (
+            <button
+              key={r}
+              onClick={() => setRole(r)}
+              style={{
+                background: role === r ? "#222" : "transparent",
+                border: "none",
+                borderRadius: 7,
+                color: role === r ? "#c8f000" : "rgba(255,255,255,0.4)",
+                fontWeight: role === r ? 700 : 400,
+                fontSize: 14,
+                padding: "10px 0",
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+            >
+              {r}
+            </button>
+          ))}
         </div>
 
-        <div className="space-y-3">
-          <input 
-            type="email" 
-            placeholder="Email Address" 
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full bg-[#141414] border border-gray-800 p-3 rounded-lg text-white text-sm focus:border-[#CAFF33] outline-none"
-          />
-          <input 
-            type="password" 
-            placeholder="Password" 
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full bg-[#141414] border border-gray-800 p-3 rounded-lg text-white text-sm focus:border-[#CAFF33] outline-none"
-          />
-        </div>
-        
-        <button 
-          disabled={loading}
-          type="submit"
-          className="w-full bg-[#CAFF33] py-3 rounded-lg font-bold text-black text-sm hover:brightness-110 transition-all disabled:opacity-50"
+        {/* Username */}
+        <input
+          type="text"
+          placeholder="username"
+          value={username}
+          onChange={e => setUsername(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && handleSubmit()}
+          style={{ ...inputStyle, marginBottom: 12 }}
+          autoComplete="username"
+        />
+
+        {/* Password */}
+        <input
+          type="password"
+          placeholder="password"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && handleSubmit()}
+          style={{ ...inputStyle, marginBottom: 12 }}
+          autoComplete="current-password"
+        />
+
+        {/* Error */}
+        {error && (
+          <p style={{ color: "#f87171", fontSize: 13, margin: "0 0 12px" }}>
+            {error}
+          </p>
+        )}
+
+        {/* Submit */}
+        <button
+          onClick={handleSubmit}
+          disabled={loading || !username || !password}
+          style={{
+            width: "100%",
+            background: loading || !username || !password ? "#8aaa00" : "#c8f000",
+            color: "#000",
+            fontWeight: 700,
+            fontSize: 15,
+            border: "none",
+            borderRadius: 8,
+            padding: "14px 0",
+            cursor: loading || !username || !password ? "not-allowed" : "pointer",
+            marginBottom: 16,
+            transition: "background 0.15s",
+          }}
         >
-          {loading ? "Authenticating..." : `Login as ${role}`}
+          {loading ? "Authenticating…" : `Login as ${role}`}
         </button>
-        
-        <button type="button" className="w-full text-gray-500 text-xs hover:text-white transition-all">
+
+        {/* Footer */}
+        <p style={{ textAlign: "center", color: "rgba(255,255,255,0.3)", fontSize: 13, margin: 0 }}>
           Request system access?
-        </button>
-      </form>
+        </p>
+      </div>
     </div>
   );
-};
-
-export default LoginForm;
+}

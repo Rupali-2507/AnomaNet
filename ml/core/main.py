@@ -40,6 +40,19 @@ from core.graph.graph_api import graph_router
 from core.graph.neo4j_client import health_check as neo4j_health
 from core.scoring.anoma_score import compute_anoma_score, update_weights, get_weights
 
+# Pre-generate a small account pool for on-demand scenarios
+def _build_scenario_pool(n: int = 200):
+    try:
+        from data_simulator.simulator import generate_universe
+        customers, accounts, _ = generate_universe(n_accounts=n)
+        log.info("Scenario pool ready: %d accounts", len(accounts))
+        return accounts
+    except Exception as e:
+        log.warning("Could not build scenario pool: %s", e)
+        return []
+
+_SCENARIO_POOL: list = []
+
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -105,7 +118,9 @@ def _start_kafka_consumer():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _models_status
+    global _SCENARIO_POOL
     log.info("AnomaNet ML service starting...")
+    _SCENARIO_POOL = _build_scenario_pool(200)
 
     # Load models
     _models_status = _load_all_models()
@@ -330,17 +345,17 @@ def _run_scenario(scenario_type: str, scenario_id: str):
         if scenario_type == "CIRCULAR":
             from data_simulator.scenarios.circular import generate_circular_cluster
             txns, _, _ = generate_circular_cluster(
-                n_clusters=1, shared_pool=[], sim_end=SIM_END)
+                n_clusters=1, shared_pool=_SCENARIO_POOL, sim_end=SIM_END)
 
         elif scenario_type == "LAYERING":
             from data_simulator.scenarios.layering import generate_layering_cluster
             txns, _, _ = generate_layering_cluster(
-                n_clusters=1, shared_pool=[], sim_end=SIM_END)
+                n_clusters=1, shared_pool=_SCENARIO_POOL, sim_end=SIM_END)
 
         elif scenario_type == "STRUCTURING":
             from data_simulator.scenarios.structuring import generate_structuring_cluster
             txns, _, _ = generate_structuring_cluster(
-                n_clusters=1, shared_pool=[], sim_end=SIM_END)
+                n_clusters=1, shared_pool=_SCENARIO_POOL, sim_end=SIM_END)
 
         elif scenario_type == "DORMANT":
             from data_simulator.scenarios.dormant_activation import generate_dormant_cluster
@@ -359,41 +374,47 @@ def _run_scenario(scenario_type: str, scenario_id: str):
 
 
 def _publish_scenario_transactions(txns, scenario_id: str):
-    """Publish scenario transactions to Kafka raw.transactions topic."""
+    """Publish enriched transactions directly to ml.scoring.queue (local dev bypass)."""
     try:
         import json
         from kafka import KafkaProducer
 
         producer = KafkaProducer(
             bootstrap_servers   = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
-            value_serializer    = lambda v: json.dumps(v).encode("utf-8"),
             security_protocol   = "SASL_SSL",
             sasl_mechanism      = "SCRAM-SHA-256",
             sasl_plain_username = os.getenv("KAFKA_SASL_USERNAME", ""),
             sasl_plain_password = os.getenv("KAFKA_SASL_PASSWORD", ""),
+            api_version         = (2, 5, 0),
+            value_serializer    = lambda v: json.dumps(v).encode("utf-8"),
         )
         for tx in txns:
-            msg = {
-                "event_type":    "TRANSACTION_CREATED",
-                "event_id":      tx.id,
+            enriched = {
+                "event_type":     "TRANSACTION_ENRICHED",
+                "event_id":       tx.id,
                 "schema_version": "1.0",
-                "timestamp":     tx.initiated_at.isoformat(),
-                "scenario_id":   scenario_id,
+                "timestamp":      tx.initiated_at.isoformat(),
                 "transaction": {
-                    "id":               tx.id,
-                    "reference_number": tx.reference_number,
+                    "id":                tx.id,
+                    "reference_number":  tx.reference_number,
                     "source_account_id": tx.source_account_id,
-                    "dest_account_id":  tx.dest_account_id,
-                    "amount":           tx.amount,
-                    "currency":         "INR",
-                    "channel":          tx.channel,
-                    "initiated_at":     tx.initiated_at.isoformat(),
-                    "branch_id":        tx.branch_id,
+                    "dest_account_id":   tx.dest_account_id,
+                    "amount":            tx.amount,
+                    "channel":           tx.channel,
+                    "initiated_at":      tx.initiated_at.isoformat(),
+                    "branch_id":         tx.branch_id,
+                    "metadata":          {},
+                },
+                "account": {
+                    "kyc_risk_tier":            "MEDIUM",
+                    "declared_monthly_income":   50000.0,
+                    "is_dormant":                False,
                 },
             }
-            producer.send("raw.transactions", value=msg)
+            producer.send("ml.scoring.queue", value=enriched)
         producer.flush()
         producer.close()
+        log.info("Published %d transactions to ml.scoring.queue", len(txns))
     except Exception as e:
         log.error("Failed to publish scenario transactions: %s", e)
 

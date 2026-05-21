@@ -178,17 +178,8 @@ def _process_message(msg_value: dict, producer) -> bool:
             log.error("Invalid timestamp: %s", initiated_at_str)
             return False
 
-        # ── Step 1: Write edge to Neo4j ───────────────────────────────────────
-        from core.graph.neo4j_client import write_transaction_edge, update_anoma_score
-        write_transaction_edge(
-            tx_id            = tx_id,
-            source_account_id = account_id,
-            dest_account_id  = dest_account_id,
-            amount           = amount,
-            channel          = channel,
-            timestamp        = tx_time.isoformat(),
-            branch_id        = branch_id,
-        )
+        # ── Step 1: (edge already written by backend TransactionConsumer) ──────
+        from core.graph.neo4j_client import update_anoma_score
 
         # ── Step 2: Compute contextual features ───────────────────────────────
         residency_seconds = _compute_residency(account_id, tx_time)
@@ -286,7 +277,7 @@ def start_consumer():
                 SCORING_TOPIC,
                 bootstrap_servers       = KAFKA_SERVERS,
                 group_id                = CONSUMER_GROUP,
-                auto_offset_reset       = "latest",
+                auto_offset_reset       = "earliest",
                 enable_auto_commit      = True,
                 auto_commit_interval_ms = 5000,
                 max_poll_records        = MAX_POLL_RECORDS,
