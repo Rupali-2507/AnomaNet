@@ -99,3 +99,18 @@ springdoc:
     path: /swagger-ui
   api-docs:
     path: /v3/api-docs
+
+ # application.properties
+
+spring.neo4j.uri=neo4j+s://25be8718.databases.neo4j.io
+spring.neo4j.authentication.username=neo4j
+spring.neo4j.authentication.password=YOUR_PASSWORD
+
+# Connection pool resilience
+spring.neo4j.pool.max-connection-lifetime=1h
+spring.neo4j.pool.max-connection-pool-size=50
+spring.neo4j.pool.connection-acquisition-timeout=60s
+spring.neo4j.pool.idle-time-before-connection-test=30s
+
+# Retry on transient errors (routing failures are transient)
+spring.neo4j.security.encrypted=true   

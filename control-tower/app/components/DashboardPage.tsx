@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSession } from "next-auth/react";
+import { useSession } from "@/lib/session-context";   // ← was: next-auth/react
 import { apiFetch } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -31,7 +31,6 @@ interface DailyVolume {
   flagged: number;
 }
 
-// ─── Mappings ──────────────────────────────────────────────────────────────────
 const ALERT_TYPE_LABEL: Record<string, string> = {
   CIRCULAR:         "Circular Flow",
   LAYERING:         "Layering",
@@ -46,7 +45,7 @@ const ALERT_STATUS_LABEL: Record<string, Alert["status"]> = {
   UNDER_REVIEW: "In Review",
   ESCALATED:    "Escalated",
   REPORTED_FIU: "Escalated",
-  CLOSED_SAR:   "New",   // won't appear in active list but safe fallback
+  CLOSED_SAR:   "New",
   CLOSED_FP:    "New",
 };
 
@@ -73,7 +72,6 @@ function relativeTime(iso: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-// ─── Fallback volume data (until a daily-volume endpoint is added) ─────────────
 const FALLBACK_VOLUME: DailyVolume[] = [
   { day: "Mon", normal: 4200, flagged: 18 },
   { day: "Tue", normal: 3900, flagged: 24 },
@@ -84,7 +82,6 @@ const FALLBACK_VOLUME: DailyVolume[] = [
   { day: "Sun", normal: 2100, flagged: 47 },
 ];
 
-// ─── Theme tokens ─────────────────────────────────────────────────────────────
 const T = {
   bg:      "#0a0a0a",
   surface: "#111111",
@@ -96,7 +93,6 @@ const T = {
 };
 
 const font = "'Inter', 'Helvetica Neue', Arial, sans-serif";
-
 const riskColor = (r: Alert["riskLevel"]) =>
   r === "Critical" ? "#ff4d4d" : r === "High" ? "#f59e0b" : "#60a5fa";
 
@@ -115,7 +111,6 @@ const typeIcon = (t: string) =>
   ({ "Circular Flow": "⟳", "High Velocity": "⚡", "Structuring": "⬇",
      "Dormant Activation": "◎", "Layering": "≡", "Profile Mismatch": "◈" }[t] ?? "•");
 
-// ─── SVG Sparkline ────────────────────────────────────────────────────────────
 function VolumeChart({ data }: { data: DailyVolume[] }) {
   const maxF = Math.max(...data.map((d) => d.flagged));
   const W = 540; const H = 68; const pad = 14;
@@ -143,7 +138,6 @@ function VolumeChart({ data }: { data: DailyVolume[] }) {
   );
 }
 
-// ─── Stat Card ────────────────────────────────────────────────────────────────
 function StatCard({ label, value, sub, accent }: { label: string; value: string | number; sub: string; accent: string }) {
   return (
     <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: "18px 20px" }}>
@@ -154,7 +148,6 @@ function StatCard({ label, value, sub, accent }: { label: string; value: string 
   );
 }
 
-// ─── Loading skeleton ─────────────────────────────────────────────────────────
 function Skeleton({ height = 16, width = "100%" }: { height?: number; width?: string | number }) {
   return (
     <div style={{
@@ -169,14 +162,15 @@ function Skeleton({ height = 16, width = "100%" }: { height?: number; width?: st
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
-  const { data: session } = useSession();
-  const token = session?.accessToken; // stable string — safe as dep
+  // ↓ ONLY CHANGE: destructure `session` directly instead of `data: session`
+  const { session } = useSession();
+  const token = session?.accessToken;
 
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [cases,  setCases]  = useState<Case[]>([]);
   const [volume]            = useState<DailyVolume[]>(FALLBACK_VOLUME);
 
-  const [statsLoading,  setStatsLoading]  = useState(false);  // ← start false; set true only when fetch fires
+  const [statsLoading,  setStatsLoading]  = useState(false);
   const [alertsLoading, setAlertsLoading] = useState(false);
   const [casesLoading,  setCasesLoading]  = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -184,7 +178,6 @@ export default function DashboardPage() {
   const [alertStats, setAlertStats] = useState<{ total: number; newCount: number; under_review: number }>({ total: 0, newCount: 0, under_review: 0 });
   const [caseStats,  setCaseStats]  = useState({ total: 0, open: 0, escalated: 0 });
 
-  // ── Fetch alerts ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!token || !session) return;
     setAlertsLoading(true);
@@ -206,21 +199,19 @@ export default function DashboardPage() {
       .finally(() => setAlertsLoading(false));
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Fetch alert stats ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!token || !session) return;
     setStatsLoading(true);
     apiFetch<{ total: number; new: number; under_review: number }>("/api/alerts/stats", session)
       .then((raw) => setAlertStats({
         total:        raw.total        ?? 0,
-        newCount:     raw["new"]       ?? 0,  // ← bracket notation avoids reserved keyword parse error
+        newCount:     raw["new"]       ?? 0,
         under_review: raw.under_review ?? 0,
       }))
       .catch((e) => setError(e.message))
       .finally(() => setStatsLoading(false));
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Fetch cases ───────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!token || !session) return;
     setCasesLoading(true);
@@ -228,8 +219,8 @@ export default function DashboardPage() {
       .then((data) => {
         const mapped: Case[] = (data.content ?? []).map((c: any) => ({
           id:         `CASE-${String(c.id).slice(0, 6).toUpperCase()}`,
-          accountId:  `Alert ${String(c.alertId).slice(0, 6).toUpperCase()}`,  // Case has no accountId — show linked alertId
-          type:       c.priority ?? "MEDIUM",   // Case has no caseType — show priority
+          accountId:  `Alert ${String(c.alertId).slice(0, 6).toUpperCase()}`,
+          type:       c.priority ?? "MEDIUM",
           openedAt:   c.createdAt
                         ? new Date(c.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })
                         : "—",
@@ -242,7 +233,6 @@ export default function DashboardPage() {
       .finally(() => setCasesLoading(false));
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Fetch case stats ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!token || !session) return;
     apiFetch<{ total: number; open: number; escalated: number }>("/api/cases/stats", session)
@@ -251,7 +241,7 @@ export default function DashboardPage() {
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const critical     = alerts.filter((a) => a.riskLevel === "Critical").length;
-  const needsAction  = alertStats.newCount;   // ← was alertStats.new (reserved keyword — always 0)
+  const needsAction  = alertStats.newCount;
   const todayFlagged = volume[volume.length - 1].flagged;
 
   return (
@@ -262,21 +252,18 @@ export default function DashboardPage() {
 
       <main style={{ maxWidth: 1580, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 24 }}>
 
-        {/* Title block */}
         <div>
           <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: T.muted, margin: "0 0 6px" }}>MONITORING</p>
           <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Dashboard</h1>
           <p style={{ fontSize: 13, color: T.muted, margin: "4px 0 0" }}>Here's what needs your attention today.</p>
         </div>
 
-        {/* Error banner */}
         {error && (
           <div style={{ background: "rgba(255,77,77,0.1)", border: "1px solid rgba(255,77,77,0.3)", borderRadius: 8, padding: "10px 16px", fontSize: 13, color: "#ff4d4d" }}>
             ⚠ Could not reach backend: {error}. Showing last known data.
           </div>
         )}
 
-        {/* Stat cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
           {statsLoading ? (
             [0,1,2,3].map(i => (
@@ -296,10 +283,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Alerts + sidebar */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 14 }}>
-
-          {/* ── Alert table ── */}
           <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 18px", borderBottom: `1px solid ${T.border}` }}>
               <span style={{ fontSize: 13, fontWeight: 600 }}>Recent Alerts</span>
@@ -316,23 +300,15 @@ export default function DashboardPage() {
               alerts.map((a, idx) => {
                 const st = statusStyle(a.status);
                 return (
-                  <div
-                    key={a.id}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 12,
-                      padding: "11px 18px",
+                  <div key={a.id}
+                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px",
                       borderBottom: idx < alerts.length - 1 ? `1px solid ${T.border}` : "none",
-                      cursor: "pointer", transition: "background 0.12s",
-                    }}
+                      cursor: "pointer", transition: "background 0.12s" }}
                     onMouseEnter={e => (e.currentTarget.style.background = "#161616")}
                     onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                   >
-                    {/* Risk dot */}
                     <div style={{ width: 8, height: 8, borderRadius: "50%", background: riskColor(a.riskLevel), flexShrink: 0, boxShadow: `0 0 6px ${riskColor(a.riskLevel)}` }} />
-
-                    {/* Icon */}
                     <span style={{ fontSize: 16, flexShrink: 0 }}>{typeIcon(a.type)}</span>
-
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontSize: 13, fontWeight: 600 }}>{a.type}</span>
@@ -340,11 +316,9 @@ export default function DashboardPage() {
                       </div>
                       <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{a.time} · {a.branch}</div>
                     </div>
-
                     <div style={{ padding: "2px 8px", borderRadius: 20, background: st.bg, color: st.color, border: `1px solid ${st.border}`, fontSize: 9, fontWeight: 700, flexShrink: 0 }}>
                       {a.status}
                     </div>
-
                     <span style={{ fontSize: 11, color: riskColor(a.riskLevel), fontWeight: 700, fontFamily: "'Courier New', monospace", flexShrink: 0 }}>
                       {a.riskLevel}
                     </span>
@@ -354,16 +328,12 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* ── Right column ── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-
-            {/* Volume sparkline */}
             <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: "16px 14px" }}>
               <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: T.muted, margin: "0 0 12px" }}>Flagged Transactions / Day</p>
               <VolumeChart data={volume} />
             </div>
 
-            {/* Risk bars */}
             <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: "16px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
               <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: T.muted, margin: 0 }}>Risk Breakdown</p>
               {alertsLoading ? (
@@ -387,7 +357,6 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* Quick lookup */}
             <div style={{ background: "rgba(200,241,53,0.04)", border: "1px solid rgba(200,241,53,0.14)", borderRadius: 10, padding: "14px" }}>
               <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: T.lime, margin: "0 0 6px" }}>Quick Lookup</p>
               <p style={{ fontSize: 11, color: T.muted, margin: "0 0 10px" }}>Search any account to trace fund flow</p>
@@ -405,7 +374,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* ── My Cases ── */}
         <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, overflow: "hidden" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 18px", borderBottom: `1px solid ${T.border}` }}>
             <span style={{ fontSize: 13, fontWeight: 600 }}>My Open Cases</span>
@@ -422,14 +390,10 @@ export default function DashboardPage() {
             cases.map((c, idx) => {
               const st = statusStyle(c.status);
               return (
-                <div
-                  key={c.id}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 14,
-                    padding: "11px 18px",
+                <div key={c.id}
+                  style={{ display: "flex", alignItems: "center", gap: 14, padding: "11px 18px",
                     borderBottom: idx < cases.length - 1 ? `1px solid ${T.border}` : "none",
-                    cursor: "pointer", transition: "background 0.12s",
-                  }}
+                    cursor: "pointer", transition: "background 0.12s" }}
                   onMouseEnter={e => (e.currentTarget.style.background = "#161616")}
                   onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                 >

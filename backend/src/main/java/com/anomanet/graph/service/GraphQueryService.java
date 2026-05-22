@@ -1,218 +1,306 @@
 package com.anomanet.graph.service;
 
 import com.anomanet.graph.dto.GraphDtos;
+import org.neo4j.driver.exceptions.ServiceUnavailableException;
+import org.neo4j.driver.exceptions.SessionExpiredException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.neo4j.core.Neo4jClient;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 @Service
 public class GraphQueryService {
 
     private static final Logger log = LoggerFactory.getLogger(GraphQueryService.class);
+
+    private static final int    MAX_RETRIES             = 3;
+    private static final long   RETRY_BACKOFF_MS        = 600L;
+    private static final double FLAGGED_SCORE_THRESHOLD = 0.3;
+
     private final Neo4jClient neo4jClient;
 
     public GraphQueryService(Neo4jClient neo4jClient) {
         this.neo4jClient = neo4jClient;
     }
 
-    public GraphDtos.SubgraphResponse getSubgraph(String accountId, int depth, int hours) {
-        int d = Math.min(Math.max(depth, 1), 4);
+    // ─────────────────────────────────────────────────────────────
+    // Retry helper
+    // ─────────────────────────────────────────────────────────────
 
-        String cypher = String.format("""
-            MATCH (start:Account {id: $accountId})
-            OPTIONAL MATCH path = (start)-[:TRANSFERRED_TO*1..%d]-(neighbor:Account)
-            WITH collect(DISTINCT start) + collect(DISTINCT neighbor) AS allNodes
-            UNWIND allNodes AS n
-            WITH collect(DISTINCT n) AS nodes
-            UNWIND nodes AS n
-            OPTIONAL MATCH (n)-[r:TRANSFERRED_TO]->(m:Account)
-            WHERE m IN nodes
-            RETURN
-              collect(DISTINCT {
-                id: n.id,
-                anoma_score: coalesce(n.anoma_score, 0.0),
-                account_type: coalesce(n.account_type, 'UNKNOWN'),
-                is_dormant: coalesce(n.is_dormant, false),
-                kyc_risk_tier: coalesce(n.kyc_risk_tier, 'LOW'),
-                branch_id: coalesce(n.branch_id, '')
-              }) AS nodes,
-              collect(DISTINCT {
-                source: startNode(r).id,
-                target: endNode(r).id,
-                amount: coalesce(r.amount, 0.0),
-                timestamp: coalesce(r.timestamp, ''),
-                channel: coalesce(r.channel, ''),
-                tx_id: coalesce(r.tx_id, '')
-              }) AS edges
-            """, d);
+    private <T> T withRetry(String opName, Supplier<T> operation) {
+        Exception last  = null;
+        long backoff    = RETRY_BACKOFF_MS;
 
-        List<GraphDtos.GraphNode> nodes = new ArrayList<>();
-        List<GraphDtos.GraphEdge> edges = new ArrayList<>();
+        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            try {
+                return operation.get();
+            } catch (ServiceUnavailableException | SessionExpiredException e) {
+                last = e;
+                log.warn("{} routing error (attempt {}/{}), retrying in {}ms: {}",
+                        opName, attempt + 1, MAX_RETRIES, backoff, e.getMessage());
+                sleep(backoff);
+                backoff *= 2;
+            } catch (Exception e) {
+                String msg = e.getMessage() != null ? e.getMessage() : "";
+                boolean isRouting = msg.contains("routing")
+                        || msg.contains("No routing server")
+                        || msg.contains("no longer available")
+                        || msg.contains("ServiceUnavailable")
+                        || msg.contains("Could not perform discovery");
 
-        try {
-            neo4jClient.query(cypher)
-                .bind(accountId).to("accountId")
-                .fetch()
-                .first()
-                .ifPresent(row -> {
-                    parseNodes(row, nodes);
-                    parseEdges(row, edges);
-                });
-        } catch (Exception e) {
-            log.error("Subgraph query failed for {}: {}", accountId, e.getMessage());
-            // Return root node at minimum so the graph always mounts
-            GraphDtos.GraphNode root = new GraphDtos.GraphNode();
-            root.setId(accountId);
-            root.setLabel(accountId);
-            root.setAnomaScore(0.0);
-            root.setAccountType("UNKNOWN");
-            nodes.add(root);
+                if (isRouting && attempt < MAX_RETRIES - 1) {
+                    last = e;
+                    log.warn("{} routing error (attempt {}/{}), retrying in {}ms: {}",
+                            opName, attempt + 1, MAX_RETRIES, backoff, msg);
+                    sleep(backoff);
+                    backoff *= 2;
+                } else {
+                    log.error("{} failed: {}", opName, msg);
+                    throw e;
+                }
+            }
         }
-
-        // Ensure root node is always present
-        if (nodes.stream().noneMatch(n -> accountId.equals(n.getId()))) {
-            GraphDtos.GraphNode root = new GraphDtos.GraphNode();
-            root.setId(accountId);
-            root.setLabel(accountId);
-            nodes.add(0, root);
-        }
-
-        GraphDtos.GraphMetadata meta = new GraphDtos.GraphMetadata();
-        meta.setTotalNodes(nodes.size());
-        meta.setTotalEdges(edges.size());
-        meta.setDetectedCycles(new ArrayList<>());
-
-        GraphDtos.SubgraphResponse response = new GraphDtos.SubgraphResponse();
-        response.setNodes(nodes);
-        response.setEdges(edges);
-        response.setMetadata(meta);
-        return response;
+        log.error("{} failed after {} retries", opName, MAX_RETRIES);
+        throw new RuntimeException(opName + " failed after " + MAX_RETRIES + " retries", last);
     }
 
-    @SuppressWarnings("unchecked")
-    private void parseNodes(Map<String, Object> row, List<GraphDtos.GraphNode> nodes) {
-        Object rawNodes = row.get("nodes");
-        if (!(rawNodes instanceof List)) return;
-        for (Object obj : (List<?>) rawNodes) {
-            if (!(obj instanceof Map)) continue;
-            Map<String, Object> n = (Map<String, Object>) obj;
-            if (n.get("id") == null) continue;
-            GraphDtos.GraphNode node = new GraphDtos.GraphNode();
-            node.setId(String.valueOf(n.get("id")));
-            node.setLabel(String.valueOf(n.get("id")));
-            node.setAnomaScore(n.get("anoma_score") != null ? ((Number) n.get("anoma_score")).doubleValue() : 0.0);
-            node.setAccountType(String.valueOf(n.getOrDefault("account_type", "UNKNOWN")));
-            node.setDormant(Boolean.TRUE.equals(n.get("is_dormant")));
-            node.setKycRiskTier(String.valueOf(n.getOrDefault("kyc_risk_tier", "LOW")));
-            node.setBranchId(String.valueOf(n.getOrDefault("branch_id", "")));
-            nodes.add(node);
-        }
+    private static void sleep(long ms) {
+        try { Thread.sleep(ms); }
+        catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
     }
 
-    @SuppressWarnings("unchecked")
-    private void parseEdges(Map<String, Object> row, List<GraphDtos.GraphEdge> edges) {
-        Object rawEdges = row.get("edges");
-        if (!(rawEdges instanceof List)) return;
-        for (Object obj : (List<?>) rawEdges) {
-            if (!(obj instanceof Map)) continue;
-            Map<String, Object> e = (Map<String, Object>) obj;
-            if (e.get("source") == null || e.get("target") == null) continue;
-            GraphDtos.GraphEdge edge = new GraphDtos.GraphEdge();
-            edge.setSource(String.valueOf(e.get("source")));
-            edge.setTarget(String.valueOf(e.get("target")));
-            edge.setAmount(e.get("amount") != null ? ((Number) e.get("amount")).doubleValue() : 0.0);
-            edge.setTimestamp(String.valueOf(e.getOrDefault("timestamp", "")));
-            edge.setChannel(String.valueOf(e.getOrDefault("channel", "")));
-            edge.setTxId(String.valueOf(e.getOrDefault("tx_id", "")));
-            edges.add(edge);
-        }
-    }
+    // ─────────────────────────────────────────────────────────────
+    // getFlaggedAccounts
+    // ─────────────────────────────────────────────────────────────
 
-    // Fetches high-risk accounts (anoma_score > 0.5) for the graph explorer dropdown
     public List<Map<String, Object>> getFlaggedAccounts() {
-        // In GraphQueryService.getFlaggedAccounts()
-        String cypher = """
-            MATCH (a:Account)
-            WHERE coalesce(a.anoma_score, 0.0) > 0.0
-            RETURN a.id AS id,
-                coalesce(a.anoma_score, 0.0) AS score,
-                coalesce(a.kyc_risk_tier, 'LOW') AS kyc_tier
-            ORDER BY score DESC
-            LIMIT 50
-            """;
-        List<Map<String, Object>> result = new ArrayList<>();
-        try {
-            neo4jClient.query(cypher).fetch().all().forEach(row -> {
-                Map<String, Object> acc = new HashMap<>();
-                acc.put("id", String.valueOf(row.get("id")));
-                acc.put("score", row.get("score") != null ? ((Number) row.get("score")).doubleValue() : 0.0);
-                acc.put("kyc_tier", String.valueOf(row.getOrDefault("kyc_tier", "LOW")));
-                result.add(acc);
-            });
-        } catch (Exception e) {
-            log.error("getFlaggedAccounts failed: {}", e.getMessage());
-        }
-        return result;
+        return withRetry("getFlaggedAccounts", () -> {
+            try {
+                Collection<Map<String, Object>> rows = neo4jClient.query("""
+                        MATCH (n:Account)
+                        WHERE n.anoma_score IS NOT NULL
+                          AND n.anoma_score >= $threshold
+                        RETURN n.id            AS id,
+                               n.anoma_score   AS score,
+                               n.kyc_risk_tier AS kyc_tier
+                        ORDER BY n.anoma_score DESC
+                        LIMIT 50
+                        """)
+                        .bind(FLAGGED_SCORE_THRESHOLD).to("threshold")
+                        .fetch()
+                        .all();
+
+                List<Map<String, Object>> accounts = rows.stream()
+                        .map(row -> {
+                            Map<String, Object> m = new LinkedHashMap<>();
+                            m.put("id",       Objects.toString(row.get("id"), ""));
+                            m.put("score",    toDouble(row.get("score")));
+                            m.put("kyc_tier", Objects.toString(row.get("kyc_tier"), "LOW"));
+                            return m;
+                        })
+                        .collect(Collectors.toList());
+
+                log.info("getFlaggedAccounts → {} accounts (threshold={})",
+                        accounts.size(), FLAGGED_SCORE_THRESHOLD);
+
+                if (accounts.isEmpty()) logTotalAccountCount();
+
+                return accounts;
+
+            } catch (Exception e) {
+                log.error("getFlaggedAccounts failed: {}", e.getMessage());
+                throw e;
+            }
+        });
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // getSubgraph  — uses GraphDtos.GraphNode / GraphDtos.GraphEdge
+    // ─────────────────────────────────────────────────────────────
+
+    public GraphDtos.SubgraphResponse getSubgraph(String accountId, int depth, int hours) {
+        return withRetry("getSubgraph[" + accountId + "]", () -> {
+            try {
+                // ── nodes ──
+                Collection<Map<String, Object>> nodeRows = neo4jClient.query("""
+                        MATCH (root:Account {id: $accountId})
+                        CALL apoc.path.subgraphAll(root, {
+                            maxLevel: $depth,
+                            relationshipFilter: 'TRANSFERRED_TO>'
+                        })
+                        YIELD nodes
+                        UNWIND nodes AS n
+                        RETURN DISTINCT
+                               n.id             AS id,
+                               n.label          AS label,
+                               n.anoma_score    AS anoma_score,
+                               n.account_type   AS account_type,
+                               n.kyc_risk_tier  AS kyc_risk_tier,
+                               n.dormant        AS dormant,
+                               n.branch_id      AS branch_id
+                        """)
+                        .bind(accountId).to("accountId")
+                        .bind(depth).to("depth")
+                        .fetch().all();
+
+                // ── edges ──
+                Collection<Map<String, Object>> edgeRows = neo4jClient.query("""
+                        MATCH (root:Account {id: $accountId})
+                        CALL apoc.path.subgraphAll(root, {
+                            maxLevel: $depth,
+                            relationshipFilter: 'TRANSFERRED_TO>'
+                        })
+                        YIELD relationships
+                        UNWIND relationships AS r
+                        RETURN DISTINCT
+                               startNode(r).id AS source,
+                               endNode(r).id   AS target,
+                               r.amount        AS amount,
+                               r.timestamp     AS timestamp,
+                               r.channel       AS channel,
+                               r.tx_id         AS tx_id
+                        """)
+                        .bind(accountId).to("accountId")
+                        .bind(depth).to("depth")
+                        .fetch().all();
+
+                List<GraphDtos.GraphNode> nodes = nodeRows.stream()
+                        .map(this::toGraphNode)
+                        .collect(Collectors.toList());
+
+                List<GraphDtos.GraphEdge> edges = edgeRows.stream()
+                        .map(this::toGraphEdge)
+                        .collect(Collectors.toList());
+
+                // build metadata
+                GraphDtos.GraphMetadata meta = new GraphDtos.GraphMetadata();
+                meta.setTotalNodes(nodes.size());
+                meta.setTotalEdges(edges.size());
+
+                GraphDtos.SubgraphResponse resp = new GraphDtos.SubgraphResponse();
+                resp.setNodes(nodes);
+                resp.setEdges(edges);
+                resp.setMetadata(meta);
+
+                log.info("getSubgraph[{}] depth={} → {} nodes, {} edges",
+                        accountId, depth, nodes.size(), edges.size());
+
+                return resp;
+
+            } catch (Exception e) {
+                log.error("getSubgraph[{}] failed: {}", accountId, e.getMessage());
+                throw e;
+            }
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // detectCycles  — uses GraphDtos.CycleResult (has setPath)
+    // ─────────────────────────────────────────────────────────────
 
     public List<GraphDtos.CycleResult> detectCycles(String accountId, int maxLength, int hours) {
-        int ml = Math.min(Math.max(maxLength, 2), 7);
-        String cypher = String.format("""
-            MATCH path = (start:Account {id: $accountId})-[:TRANSFERRED_TO*2..%d]->(start)
-            WITH [n IN nodes(path) | n.id] AS pathIds,
-                 [r IN relationships(path) | r.amount] AS amounts
-            RETURN pathIds,
-                   reduce(mn=amounts[0], a IN amounts | CASE WHEN a < mn THEN a ELSE mn END) AS minAmt,
-                   reduce(mx=amounts[0], a IN amounts | CASE WHEN a > mx THEN a ELSE mx END) AS maxAmt,
-                   reduce(s=0.0, a IN amounts | s+a)/size(amounts) AS avgAmt
-            LIMIT 10
-            """, ml);
+        return withRetry("detectCycles[" + accountId + "]", () -> {
+            Collection<Map<String, Object>> rows = neo4jClient.query("""
+                    MATCH path = (start:Account {id: $accountId})-[:TRANSFERRED_TO*2..$maxLen]->(start)
+                    RETURN [n IN nodes(path) | n.id] AS cycle_path
+                    LIMIT 20
+                    """)
+                    .bind(accountId).to("accountId")
+                    .bind(maxLength).to("maxLen")
+                    .fetch().all();
 
-        List<GraphDtos.CycleResult> results = new ArrayList<>();
-        try {
-            neo4jClient.query(cypher)
-                .bind(accountId).to("accountId")
-                .fetch().all()
-                .forEach(row -> {
-                    GraphDtos.CycleResult r = new GraphDtos.CycleResult();
-                    r.setPath((List<String>) row.get("pathIds"));
-                    double avg = row.get("avgAmt") != null ? ((Number) row.get("avgAmt")).doubleValue() : 1;
-                    double min = row.get("minAmt") != null ? ((Number) row.get("minAmt")).doubleValue() : 0;
-                    double max = row.get("maxAmt") != null ? ((Number) row.get("maxAmt")).doubleValue() : 0;
-                    r.setAmountVariance(avg > 0 ? (max - min) / avg : 0);
-                    r.setCompletionHours(hours);
-                    results.add(r);
-                });
-        } catch (Exception e) {
-            log.error("Cycle detection failed: {}", e.getMessage());
-        }
-        return results;
+            return rows.stream().map(row -> {
+                @SuppressWarnings("unchecked")
+                List<String> path = row.get("cycle_path") instanceof List
+                        ? (List<String>) row.get("cycle_path") : List.of();
+                GraphDtos.CycleResult cr = new GraphDtos.CycleResult();
+                cr.setPath(path);
+                return cr;
+            }).collect(Collectors.toList());
+        });
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // getAccountStats  — uses GraphDtos.AccountStats (has setters)
+    // ─────────────────────────────────────────────────────────────
+
     public GraphDtos.AccountStats getAccountStats(String accountId) {
-        String cypher = """
-            MATCH (a:Account {id: $accountId})
-            OPTIONAL MATCH (a)-[out:TRANSFERRED_TO]->()
-            OPTIONAL MATCH ()-[in:TRANSFERRED_TO]->(a)
-            RETURN count(DISTINCT out) AS degreeOut, count(DISTINCT in) AS degreeIn
-            """;
-        GraphDtos.AccountStats stats = new GraphDtos.AccountStats();
-        try {
-            neo4jClient.query(cypher)
-                .bind(accountId).to("accountId")
-                .fetch().first()
-                .ifPresent(row -> {
-                    stats.setDegreeOut(((Number) row.get("degreeOut")).longValue());
-                    stats.setDegreeIn(((Number) row.get("degreeIn")).longValue());
-                    stats.setCentrality(0.0);
-                    stats.setClusterId("N/A");
-                });
-        } catch (Exception e) {
-            log.error("Stats query failed: {}", e.getMessage());
+        return withRetry("getAccountStats[" + accountId + "]", () -> {
+            Optional<Map<String, Object>> row = neo4jClient.query("""
+                    MATCH (n:Account {id: $accountId})
+                    OPTIONAL MATCH (n)-[out:TRANSFERRED_TO]->()
+                    OPTIONAL MATCH ()-[in:TRANSFERRED_TO]->(n)
+                    RETURN count(DISTINCT out) AS out_degree,
+                           count(DISTINCT in)  AS in_degree
+                    """)
+                    .bind(accountId).to("accountId")
+                    .fetch().first();
+
+            GraphDtos.AccountStats stats = new GraphDtos.AccountStats();
+            row.ifPresent(r -> {
+                stats.setDegreeIn(toLong(r.get("in_degree")));
+                stats.setDegreeOut(toLong(r.get("out_degree")));
+            });
+            return stats;
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Mapping helpers
+    // ─────────────────────────────────────────────────────────────
+
+    private GraphDtos.GraphNode toGraphNode(Map<String, Object> row) {
+        GraphDtos.GraphNode n = new GraphDtos.GraphNode();
+        n.setId(Objects.toString(row.get("id"), ""));
+        n.setLabel(Objects.toString(row.get("label"), ""));
+        n.setAnomaScore(toDouble(row.get("anoma_score")));
+        n.setAccountType(Objects.toString(row.get("account_type"), ""));
+        n.setKycRiskTier(Objects.toString(row.get("kyc_risk_tier"), "LOW"));
+        n.setDormant(Boolean.TRUE.equals(row.get("dormant")));
+        n.setBranchId(Objects.toString(row.get("branch_id"), ""));
+        return n;
+    }
+
+    private GraphDtos.GraphEdge toGraphEdge(Map<String, Object> row) {
+        GraphDtos.GraphEdge e = new GraphDtos.GraphEdge();
+        e.setSource(Objects.toString(row.get("source"), ""));
+        e.setTarget(Objects.toString(row.get("target"), ""));
+        e.setAmount(toDouble(row.get("amount")));
+        e.setTimestamp(Objects.toString(row.get("timestamp"), ""));
+        e.setChannel(Objects.toString(row.get("channel"), ""));
+        e.setTxId(Objects.toString(row.get("tx_id"), ""));
+        return e;
+    }
+
+    private static double toDouble(Object val) {
+        if (val instanceof Number) return ((Number) val).doubleValue();
+        if (val instanceof String) {
+            try { return Double.parseDouble((String) val); }
+            catch (NumberFormatException ignored) {}
         }
-        return stats;
+        return 0.0;
+    }
+
+    private static long toLong(Object val) {
+        if (val instanceof Number) return ((Number) val).longValue();
+        return 0L;
+    }
+
+    private void logTotalAccountCount() {
+        try {
+            Optional<Map<String, Object>> row = neo4jClient
+                    .query("MATCH (n:Account) RETURN count(n) AS total")
+                    .fetch().first();
+            long total = row.map(r -> toLong(r.get("total"))).orElse(0L);
+            log.warn("getFlaggedAccounts returned 0 results. Total Account nodes in DB: {}. " +
+                    "If 0 → seed your database. If >0 → lower FLAGGED_SCORE_THRESHOLD (currently {}).",
+                    total, FLAGGED_SCORE_THRESHOLD);
+        } catch (Exception e) {
+            log.warn("Could not count Account nodes for diagnostics: {}", e.getMessage());
+        }
     }
 }

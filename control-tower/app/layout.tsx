@@ -1,40 +1,34 @@
+/**
+ * app/layout.tsx
+ * Root layout — reads session on the server and passes to client SessionProvider.
+ * No NextAuth. No [..nextauth] route needed.
+ */
+
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-
+import { getSession } from "@/lib/session";
+import { SessionProvider } from "@/lib/session-context";
+// @ts-ignore: CSS side-effect import declaration missing in this environment
 import "./globals.css";
-import { Providers } from "./providers";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
-  title: "AnomaNet | Fraud Intelligence",
-  description: "Fraud Intelligence and Digital Payment Security",
-  icons: {
-    icon: "/icon.png", // Path to your icon in the /public folder
-    shortcut: "/icon.png",
-  },
+  title: "AnomaNet",
+  description: "AnomaNet Control Tower",
 };
-export default function RootLayout({
+
+export default async function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
+  // Server-side session read — available immediately, no client round-trip
+  const session = await getSession();
+
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <Providers>
+      <body>
+        <SessionProvider session={session}>
           {children}
-        </Providers>
+        </SessionProvider>
       </body>
     </html>
   );

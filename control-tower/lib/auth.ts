@@ -1,94 +1,60 @@
-// lib/auth.ts
-import NextAuth from "next-auth";
-import CredentialsProvider from "next-auth/providers/credentials";
+/**
+ * lib/auth.ts
+ * Core auth helpers — no NextAuth, pure Spring Boot JWT.
+ * Tokens are stored in httpOnly cookies (set by the Next.js API routes).
+ */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+export interface SpringUser {
+  id: string;
+  name: string;
+  role: "ADMIN" | "INVESTIGATOR" | string;
+  username: string;
+}
 
-export const { auth, handlers, signIn, signOut } = NextAuth({
-  providers: [
-    CredentialsProvider({
-      name: "AnomaNet",
-      credentials: {
-        username: { label: "Username", type: "text" },
-        password: { label: "Password", type: "password" },
-      },
+export interface AuthSession {
+  user: SpringUser;
+  accessToken: string;
+  refreshToken: string;
+}
 
-      async authorize(credentials) {
-        if (!credentials?.username || !credentials?.password) return null;
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
-        try {
-          const res = await fetch(`${API_BASE}/api/auth/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              username: credentials.username,
-              password: credentials.password,
-            }),
-          });
+/** Called from the /api/auth/login Next.js route */
+export async function loginWithSpring(
+  username: string,
+  password: string
+): Promise<{
+  token: string;
+  refreshToken: string;
+  user: SpringUser;
+}> {
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
 
-          if (!res.ok) return null;
+  if (!res.ok) {
+    const text = await res.text().catch(() => "Login failed");
+    throw new Error(text || "Invalid credentials");
+  }
 
-          const data = await res.json() as {
-            token:        string;
-            refreshToken: string;
-            user: {
-              id:       string;
-              name:     string;
-              role:     string;
-              username: string;
-            };
-          };
+  return res.json();
+}
 
-          return {
-            id:           data.user.id,
-            name:         data.user.name,
-            email:        data.user.username, // email slot holds username
-            role:         data.user.role,
-            accessToken:  data.token,
-            refreshToken: data.refreshToken,
-          };
-        } catch {
-          return null;
-        }
-      },
-    }),
-  ],
+/** Called from the /api/auth/refresh Next.js route */
+export async function refreshWithSpring(refreshToken: string): Promise<{
+  token: string;
+  refreshToken: string;
+  user: SpringUser;
+}> {
+  const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refreshToken }),
+  });
 
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.id           = user.id;
-        token.name         = user.name;
-        token.accessToken  = (user as any).accessToken;
-        token.refreshToken = (user as any).refreshToken;
-        token.role         = (user as any).role;
-        token.username     = user.email; // email slot holds username
-      }
-      return token;
-    },
-
-    async session({ session, token }) {
-      session.accessToken  = token.accessToken  as string;
-      session.refreshToken = token.refreshToken as string;
-      session.role         = token.role         as string;
-      session.user = {
-        ...session.user,
-        id:       token.id       as string ?? "",
-        name:     token.name     as string ?? "",
-        email:    token.username as string ?? "",
-        username: token.username as string ?? "",
-        role:     token.role     as string,
-      };
-      return session;
-    },
-  },
-
-  pages: {
-    signIn: "/login",
-    error:  "/login",
-  },
-
-  session: { strategy: "jwt" },
-
-  secret: process.env.NEXTAUTH_SECRET ?? "dev-secret-change-in-prod",
-});
+  if (!res.ok) throw new Error("Refresh failed");
+  return res.json();
+}

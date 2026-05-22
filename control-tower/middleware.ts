@@ -1,23 +1,49 @@
-// middleware.ts — place at project root beside package.json
-import { auth } from "@/lib/auth";
-import { NextResponse } from "next/server";
+/**
+ * middleware.ts
+ * Route protection without NextAuth.
+ * Verifies the session cookie directly using jose (same lib as lib/session.ts).
+ */
 
-export default auth((req) => {
+import { NextRequest, NextResponse } from "next/server";
+import { jwtVerify } from "jose";
+
+const SESSION_COOKIE = "anomanet_session";
+
+function getSecret(): Uint8Array {
+  const secret =
+    process.env.SESSION_SECRET ?? "dev-secret-please-change-in-prod-32chars";
+  return new TextEncoder().encode(secret);
+}
+
+async function getSessionFromCookie(req: NextRequest) {
+  const cookie = req.cookies.get(SESSION_COOKIE);
+  if (!cookie?.value) return null;
+  try {
+    const { payload } = await jwtVerify(cookie.value, getSecret());
+    return (payload as any).session;
+  } catch {
+    return null;
+  }
+}
+
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const role = (req.auth?.user as any)?.role as string | undefined;
 
-  // Not logged in — redirect to login
-  if (!req.auth) {
+  const session = await getSessionFromCookie(req);
+  const role = session?.user?.role as string | undefined;
+
+  // Not logged in → redirect to login
+  if (!session) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // /admin — ADMIN only
+  // /admin → ADMIN only
   if (pathname.startsWith("/admin") && role !== "ADMIN") {
     return NextResponse.redirect(new URL("/", req.url));
   }
 
   return NextResponse.next();
-});
+}
 
 export const config = {
   matcher: [
