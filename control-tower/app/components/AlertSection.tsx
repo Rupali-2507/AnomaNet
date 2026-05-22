@@ -12,7 +12,7 @@ import {
   X,
   RefreshCw,
 } from "lucide-react";
-import { useSession } from "next-auth/react";
+import { useSession } from "@/lib/session-context";   
 import { apiFetch, mlFetch } from "@/lib/api";
 import { useAlertStream } from "../hooks/useAlertStream";
 
@@ -329,7 +329,7 @@ const MlLogLine = ({ time, tag, msg }: { time: string; tag: string; msg: string 
 // ─────────────────────────────────────────────────────────────
 
 const AlertDetailView = ({ alert, onBack }: { alert: Alert; onBack: () => void }) => {
-  const { data: session } = useSession();
+  const {  session } = useSession();
 
   const [detail,         setDetail]         = useState<AlertDetail | null>(null);
   const [loadingAI,      setLoadingAI]      = useState(true);
@@ -638,7 +638,7 @@ const ALL_STATUSES: ("ALL" | AlertStatus)[]   = ["ALL", "NEW", "REVIEW", "ESCALA
 const PAGE_SIZE = 6;
 
 const AlertQueue = ({ onSelectAlert }: { onSelectAlert: (a: Alert) => void }) => {
-  const { data: session } = useSession();
+  const {  session } = useSession();
 
   const [alerts,       setAlerts]       = useState<Alert[]>([]);
   const [loading,      setLoading]      = useState(true);

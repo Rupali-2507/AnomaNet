@@ -1,22 +1,24 @@
-// components/Navbar.tsx
 "use client";
+/**
+ * components/Navbar.tsx
+ * Uses our custom useSession() from lib/session-context instead of next-auth.
+ */
+
 import { useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
+import { useSession } from "@/lib/session-context";
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const router = useRouter();
-  const { data: session, status } = useSession();
-  const role = (session?.user as any)?.role as "ADMIN" | "INVESTIGATOR" | undefined;
+  const { session, status, logout } = useSession();
+
+  const role = session?.user?.role as "ADMIN" | "INVESTIGATOR" | undefined;
 
   return (
     <nav className="relative w-full bg-[#1A1A1A] border-b border-gray-800 z-50">
       <div className="flex items-center justify-between px-4 md:px-8 py-4">
-
         {/* LEFT */}
         <div className="flex items-center gap-4">
           <button
@@ -26,7 +28,14 @@ const Navbar = () => {
           >
             {isMenuOpen ? <X size={28} /> : <Menu size={28} />}
           </button>
-          <Image src="/logo2.png" alt="Logo" width={130} height={35} className="object-contain" priority />
+          <Image
+            src="/logo2.png"
+            alt="Logo"
+            width={130}
+            height={35}
+            className="object-contain"
+            priority
+          />
         </div>
 
         {/* CENTER */}
@@ -41,25 +50,25 @@ const Navbar = () => {
           ) : session ? (
             <div className="flex items-center gap-3">
               <span className="hidden lg:block text-xs text-gray-500 font-mono uppercase tracking-tighter">
-                {session.user?.email} {/* email holds username — see lib/auth.ts */}
+                {session.user.username}
               </span>
               <span className="hidden lg:block text-[10px] px-2 py-0.5 rounded-full border border-gray-700 text-gray-400 font-mono">
                 {role}
               </span>
               <button
-                onClick={() => signOut({ callbackUrl: "/login" })}
+                onClick={logout}
                 className="text-xs text-gray-400 hover:text-[#CAFF33] border border-gray-700 px-3 py-1.5 rounded-full transition-all font-mono"
               >
                 Logout
               </button>
             </div>
           ) : (
-            <button
-              onClick={() => router.push("/login")}
-              className="bg-[#CAFF33] px-6 py-2 rounded-full text-black font-bold text-sm hover:bg-[#b8e62e] transition-all cursor-pointer"
+            <Link
+              href="/login"
+              className="bg-[#CAFF33] px-6 py-2 rounded-full text-black font-bold text-sm hover:bg-[#b8e62e] transition-all"
             >
               Login
-            </button>
+            </Link>
           )}
         </div>
       </div>
@@ -75,7 +84,7 @@ const Navbar = () => {
 };
 
 type NavContentProps = {
-  role?: "ADMIN" | "INVESTIGATOR";
+  role?: "ADMIN" | "INVESTIGATOR" | string;
   onLinkClick?: () => void;
 };
 
