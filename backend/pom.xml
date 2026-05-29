@@ -19,6 +19,7 @@
 
     <properties>
         <java.version>23</java.version>
+        <kafka.version>3.8.0</kafka.version>
         <jjwt.version>0.12.5</jjwt.version>
         <springdoc.version>2.3.0</springdoc.version>
         <itext.version>7.2.6</itext.version>
@@ -88,6 +89,11 @@
         <dependency>
             <groupId>org.springframework.kafka</groupId>
             <artifactId>spring-kafka</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>kafka-clients</artifactId>
+            <version>3.8.0</version>
         </dependency>
 
         <!-- ── Reactive (WebClient for simulator bridge) ────────────────── -->
