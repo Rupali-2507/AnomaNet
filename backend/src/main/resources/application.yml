@@ -30,7 +30,7 @@ spring:
     uri: ${NEO4J_URI:neo4j+s://25be8718.databases.neo4j.io}
     authentication:
       username: ${NEO4J_USER:25be8718}
-      password: ${NEO4J_PASSWORD:***REMOVED***}
+      password: ${NEO4J_PASSWORD:1DyBOEAhD0qAYQrEg66uczjxEt1o_ubbfAmBEhmyrCM}
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:d8642r0hvfrjvm53hfug.any.us-east-1.mpx.prd.cloud.redpanda.com:9092}
     listener:
@@ -45,7 +45,7 @@ spring:
         sasl.jaas.config: >
           org.apache.kafka.common.security.scram.ScramLoginModule required
           username="${KAFKA_SASL_USERNAME:anomanet}"
-          password="${KAFKA_SASL_PASSWORD:***REMOVED***}";
+          password="${KAFKA_SASL_PASSWORD:MuVwePtzcJymOoQEq0dmDeQKCop5JQ}";
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -56,13 +56,13 @@ spring:
         sasl.jaas.config: >
           org.apache.kafka.common.security.scram.ScramLoginModule required
           username="${KAFKA_SASL_USERNAME:anomanet}"
-          password="${KAFKA_SASL_PASSWORD:***REMOVED***}";
+          password="${KAFKA_SASL_PASSWORD:MuVwePtzcJymOoQEq0dmDeQKCop5JQ}";
 
 websocket:
   message-size-limit: 131072
 
 jwt:
-  secret: ${JWT_SECRET:***REMOVED***}
+  secret: ${JWT_SECRET:3f4a8b2c1d9e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a}
   expiration-ms: 86400000
   refresh-expiration-ms: 604800000
 
