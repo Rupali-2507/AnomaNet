@@ -7,9 +7,9 @@ spring:
   autoconfigure:
     exclude: org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
   datasource:
-    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/anomanet}
-    username: ${POSTGRES_USER:anomanet}
-    password: ${POSTGRES_PASSWORD:anomanet2024}
+    url: ${POSTGRES_URL}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -27,12 +27,12 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
   neo4j:
-    uri: ${NEO4J_URI:neo4j+s://25be8718.databases.neo4j.io}
+    uri: ${NEO4J_URI}
     authentication:
-      username: ${NEO4J_USER:25be8718}
-      password: ${NEO4J_PASSWORD:1DyBOEAhD0qAYQrEg66uczjxEt1o_ubbfAmBEhmyrCM}
+      username: ${NEO4J_USER}
+      password: ${NEO4J_PASSWORD}
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:d8642r0hvfrjvm53hfug.any.us-east-1.mpx.prd.cloud.redpanda.com:9092}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
     listener:
       auth-exception-retry-interval: 10s
     consumer:
@@ -44,8 +44,8 @@ spring:
         sasl.mechanism: SCRAM-SHA-256
         sasl.jaas.config: >
           org.apache.kafka.common.security.scram.ScramLoginModule required
-          username="${KAFKA_SASL_USERNAME:anomanet}"
-          password="${KAFKA_SASL_PASSWORD:MuVwePtzcJymOoQEq0dmDeQKCop5JQ}";
+          username="${KAFKA_SASL_USERNAME}"
+          password="${KAFKA_SASL_PASSWORD}";
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -55,14 +55,14 @@ spring:
         sasl.mechanism: SCRAM-SHA-256
         sasl.jaas.config: >
           org.apache.kafka.common.security.scram.ScramLoginModule required
-          username="${KAFKA_SASL_USERNAME:anomanet}"
-          password="${KAFKA_SASL_PASSWORD:MuVwePtzcJymOoQEq0dmDeQKCop5JQ}";
+          username="${KAFKA_SASL_USERNAME}"
+          password="${KAFKA_SASL_PASSWORD}";
 
 websocket:
   message-size-limit: 131072
 
 jwt:
-  secret: ${JWT_SECRET:3f4a8b2c1d9e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a}
+  secret: ${JWT_SECRET}
   expiration-ms: 86400000
   refresh-expiration-ms: 604800000
 
