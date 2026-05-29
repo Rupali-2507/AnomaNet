@@ -26,18 +26,15 @@ async function getSessionFromCookie(req: NextRequest) {
   }
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
-
   const session = await getSessionFromCookie(req);
   const role = session?.user?.role as string | undefined;
 
-  // Not logged in → redirect to login
   if (!session) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // /admin → ADMIN only
   if (pathname.startsWith("/admin") && role !== "ADMIN") {
     return NextResponse.redirect(new URL("/", req.url));
   }

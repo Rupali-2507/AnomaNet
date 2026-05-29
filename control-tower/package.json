@@ -41,6 +41,7 @@
     "@types/sockjs-client": "^1.5.4",
     "@types/three": "^0.183.1",
     "autoprefixer": "^10.4.23",
+    "baseline-browser-mapping": "^2.10.32",
     "eslint": "^9",
     "eslint-config-next": "16.0.10",
     "postcss": "^8.5.6",
