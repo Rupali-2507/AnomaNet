@@ -6,10 +6,19 @@ This project addresses **PS3 - Tracking of Funds within Bank for Fraud Detection
 
 ## Live Demo
 
-🔗 Live Demo: [https://anoma-net-eight.vercel.app]
-🎥 Demo Video: [https://youtube.com/]
+🔗 Live Demo: https://anoma-net-eight.vercel.app  
+🎥 Demo Video: https://youtube.com/
 
+## Demo Access
+
+For demonstration and evaluation purposes, use the following credentials:
+
+- **Username:** `admin`
+- **Password:** `admin123`
+
+> These credentials are intended only for the demo environment and provide access to the pre-seeded dashboard, alerts, cases, reports, and investigation workflows.
 ---
+
 
 ## Tech Stack
 
